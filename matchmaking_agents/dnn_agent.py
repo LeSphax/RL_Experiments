@@ -79,13 +79,11 @@ class DNNAgent(MatchmakingAgent):
     def train_model(self, obs, actions, rewards, values):
         obs = np.reshape(obs, [-1, self.input_size, 1])
         actions = np.reshape(actions, [-1, 2])
-        rewards = np.reshape(rewards, [-1])
-        values = np.reshape(rewards, [-1])
 
-        discounted_rewards, advantages = utils.gae(rewards, values)
+        discounted_rewards, advantages, returns = utils.gae(rewards, values)
 
         # print(obs, action, reward)
         value_loss, policy_loss, _ = self.sess.run([self.value_loss, self.policy_loss, self.train], {self.X: obs, self.ACTIONS: actions, self.DISCOUNTED_REWARDS: discounted_rewards, self.ADVANTAGES: advantages})
-        return discounted_rewards, advantages, value_loss, policy_loss
+        return discounted_rewards, advantages, returns, value_loss, policy_loss
 
     

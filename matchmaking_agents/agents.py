@@ -8,4 +8,4 @@ class MatchmakingAgent(object):
         return
 
     def train_model(self, obs, action, rewards, values):
-        return
+        return [0], [0], [0], 0, 0

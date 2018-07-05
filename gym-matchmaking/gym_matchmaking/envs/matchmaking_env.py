@@ -10,6 +10,8 @@ from gym.utils import seeding
 class MatchmakingEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
+    padding_value = -1
+
     def __init__(self):
         self.state_size = 10
         self.max_history_size = 10
@@ -22,7 +24,11 @@ class MatchmakingEnv(gym.Env):
         self.padded_state = None
         self.history = None
 
+    def seed(self,seed):
+        random.seed(seed)
+
     def step(self, action):
+        print(action)
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
         if action[0] != action[1] and len(self.state) > action[0] and len(self.state) > action[1]:
 
@@ -36,20 +42,19 @@ class MatchmakingEnv(gym.Env):
             self.state = np.delete(self.state, action)
 
             paddingLen = self.state_size - len(self.state)
-            self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(0, 0))
+            self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(self.padding_value, self.padding_value))
 
-            reward = abs(1 - pow((p1 - p2), 2))
+            reward = abs(1 - (pow((p1 - p2), 2) * 5))
         elif action[0] == self.state_size and action[1] == self.state_size:
             reward = 0
         else:
             reward = -0.1
-            
-        if random.random() > 0.9 and len(self.state) < self.state_size:
-            self.state = np.append(self.state, random.random())
+        # if random.random() > 0.9 and len(self.state) < self.state_size:
+        #     self.state = np.append(self.state, random.random())
 
-            self.state.sort()
-            paddingLen = self.state_size - len(self.state)
-            self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(0, 0))
+        #     self.state.sort()
+        #     paddingLen = self.state_size - len(self.state)
+        #     self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(0, 0))
 
         return self.padded_state, reward, False, {}
 
@@ -60,7 +65,7 @@ class MatchmakingEnv(gym.Env):
 
         self.state.sort()
         paddingLen = self.state_size - len(self.state)
-        self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(0, 0))
+        self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(self.padding_value, self.padding_value))
 
         return self.padded_state
 
