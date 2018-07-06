@@ -32,6 +32,7 @@ class DNNAgent(MatchmakingAgent):
 
         self.DISCOUNTED_REWARDS = tf.placeholder(tf.float32, [None])
         self.ADVANTAGES = tf.placeholder(tf.float32, [None])
+        self.RETURNS = tf.placeholder(tf.float32, [None])
         self.ACTIONS = tf.placeholder(tf.int32, [None, 2])
 
         action_indices = tf.range(tf.shape(self.ACTIONS)[0])
@@ -42,7 +43,7 @@ class DNNAgent(MatchmakingAgent):
         self.prob_of_picked_action = tf.add(prob_of_picked_action1, prob_of_picked_action2)
 
         self.policy_loss = - tf.reduce_mean(tf.reduce_mean(self.action_probs_out) * self.ADVANTAGES)
-        self.value_loss = tf.reduce_mean(tf.squared_difference(self.value, self.ADVANTAGES))
+        self.value_loss = tf.reduce_mean(tf.squared_difference(self.value, self.RETURNS))
         self.loss = self.policy_loss + self.value_loss
         optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
@@ -83,7 +84,14 @@ class DNNAgent(MatchmakingAgent):
         discounted_rewards, advantages, returns = utils.gae(rewards, values)
 
         # print(obs, action, reward)
-        value_loss, policy_loss, _ = self.sess.run([self.value_loss, self.policy_loss, self.train], {self.X: obs, self.ACTIONS: actions, self.DISCOUNTED_REWARDS: discounted_rewards, self.ADVANTAGES: advantages})
+        value_loss, policy_loss, _ = self.sess.run(
+            [self.value_loss, self.policy_loss, self.train],
+            {
+                self.X: obs,
+                self.ACTIONS: actions,
+                self.DISCOUNTED_REWARDS: discounted_rewards,
+                self.ADVANTAGES: advantages,
+                self.RETURNS: returns
+            }
+        )
         return discounted_rewards, advantages, returns, value_loss, policy_loss
-
-    

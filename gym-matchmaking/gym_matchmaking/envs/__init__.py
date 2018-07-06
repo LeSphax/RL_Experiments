@@ -1,1 +1,2 @@
 from gym_matchmaking.envs.matchmaking_env import MatchmakingEnv
+from gym_matchmaking.envs.matchmaking_harder_env import MatchmakingHarderEnv
