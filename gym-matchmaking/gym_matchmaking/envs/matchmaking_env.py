@@ -23,12 +23,14 @@ class MatchmakingEnv(gym.Env):
         self.state = None
         self.padded_state = None
         self.history = None
+        self.error_last_step = False
 
     def seed(self,seed):
         random.seed(seed)
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+        self.error_last_step = False
         if action[0] != action[1] and len(self.state) > action[0] and len(self.state) > action[1]:
 
             p1 = self.state[action[0]]
@@ -43,17 +45,12 @@ class MatchmakingEnv(gym.Env):
             paddingLen = self.state_size - len(self.state)
             self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(self.padding_value, self.padding_value))
 
-            reward = abs(1 - (pow((p1 - p2), 2) * 5))
+            reward = 1 - (pow((p1 - p2), 2) * 2)
         elif action[0] == self.state_size and action[1] == self.state_size:
             reward = 0
         else:
             reward = -0.1
-        # if random.random() > 0.9 and len(self.state) < self.state_size:
-        #     self.state = np.append(self.state, random.random())
-
-        #     self.state.sort()
-        #     paddingLen = self.state_size - len(self.state)
-        #     self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(0, 0))
+            self.error_last_step = True
 
         return self.padded_state, reward, False, {}
 
@@ -89,7 +86,7 @@ class MatchmakingEnv(gym.Env):
                 tiles[idx].add_attr(self.transforms[idx])
                 self.colors[idx] = tiles[idx].attrs[0]
                 self.viewer.add_geom(tiles[idx])
-            for _ in range(self.max_history_size * 2 + 1):
+            for _ in range(self.max_history_size * 2 + 2):
                 tile = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
                 tiles.append(tile)
                 transform = rendering.Transform()
@@ -103,7 +100,7 @@ class MatchmakingEnv(gym.Env):
 
         for idx in range(self.state_size):
             self.transforms[idx].set_translation(50 + 50 * idx, 50)
-            self.colors[idx].vec4 = ((0, self.padded_state[idx], 0, 1.0 if self.padded_state[idx] != 0 else 0))
+            self.colors[idx].vec4 = ((0, self.padded_state[idx], 0, 1.0 if self.padded_state[idx] != -1 else 0))
         for idx in range(len(self.history)):
             p1Idx = idx * 2 + self.state_size
             p2Idx = p1Idx + 1
@@ -112,7 +109,11 @@ class MatchmakingEnv(gym.Env):
             self.colors[p1Idx].vec4 = ((0, self.history[idx][0], 0, 1.0))
             self.colors[p2Idx].vec4 = ((0, self.history[idx][1], 0, 1.0))
         
+        #Tile to show time passing
         self.transforms[self.state_size + self.max_history_size *2].set_translation(500, 300)
         self.colors[self.state_size + self.max_history_size *2].vec4 = ((0, 0, 0, 1.0 if self.colors[self.state_size + self.max_history_size *2].vec4[3] == 0 else 0))
+        #Tile to show errors
+        self.transforms[self.state_size + self.max_history_size *2 +1].set_translation(500, 200)
+        self.colors[self.state_size + self.max_history_size *2 +1].vec4 = ((1.0, 0, 0, 1.0 if self.error_last_step else 0))
         time.sleep(0.3)
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')

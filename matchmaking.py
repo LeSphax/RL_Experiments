@@ -12,14 +12,14 @@ from matchmaking_agents.reward_per_timestep import RewardPerTimestep
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
-from keyPoller import keyboardCommands
+from utils.keyPoller import checkKeyStrokes
 import random
 
 env = gym.make('Matchmaking-v0')
 random.seed(1)
 env.seed(1)
 
-NAME = datetime.now().strftime("%Y%m%d-%H%M%S")
+name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def simulate():
@@ -55,15 +55,9 @@ def simulate():
             'rewards': [],
             'values': [],
         }
-        average_reward = RewardPerTimestep()
         obs = env.reset()
         for t in range(20):
-            def toggleRendering():
-                print("Rendering now ")
-                nonlocal render
-                render = not render
-            keyboardCommands("r", toggleRendering)
-            keyboardCommands("s", lambda: tf.train.Saver().save(sess, './saves/{name}'.format(name=NAME)))
+            checkKeyStrokes(sess,name)
             if render:
                 env.render()
             chosen_players, value = agent.get_action_and_value(obs)
