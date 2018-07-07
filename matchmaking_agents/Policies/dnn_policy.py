@@ -21,7 +21,7 @@ class DNNPolicy(MatchmakingPolicy):
                 hidden_layer = tf.contrib.layers.fully_connected(
                     inputs=previous_layer,
                     num_outputs=16,
-                    activation_fn=None, #tf.nn.relu,
+                    activation_fn=tf.nn.relu,
                     weights_initializer=tf.zeros_initializer
                 )
                 previous_layer = hidden_layer
@@ -43,9 +43,12 @@ class DNNPolicy(MatchmakingPolicy):
         self.prob_indices2 = tf.concat([tf.reshape(self.action_indices, [-1, 1]), tf.reshape(self.ACTIONS[:, 1], [-1, 1])], axis=1)
         self.prob_of_picked_action1 = tf.gather_nd(self.action_probs, self.prob_indices1)
         self.prob_of_picked_action2 = tf.gather_nd(self.action_probs, self.prob_indices2)
-        self.prob_of_picked_action = tf.multiply(self.prob_of_picked_action1, self.prob_of_picked_action2) + 1e-8
+        self.prob_of_picked_action = tf.multiply(self.prob_of_picked_action1, self.prob_of_picked_action2) + 1e-10
 
-        self.loss = - tf.reduce_mean(tf.multiply(tf.log(self.prob_of_picked_action), self.ADVANTAGES))
+        self.entropy = tf.reduce_sum(self.action_probs * tf.log(self.action_probs), 1, name="entropy")
+
+        self.losses = - tf.log(self.prob_of_picked_action) * self.ADVANTAGES - self.entropy * 0.01
+        self.loss = tf.reduce_mean(self.losses)
         optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 

@@ -49,7 +49,7 @@ class MatchmakingEnv(gym.Env):
         elif action[0] == self.state_size and action[1] == self.state_size:
             reward = 0
         else:
-            reward = -0.1
+            reward = -1
             self.error_last_step = True
 
         return self.padded_state, reward, False, {}

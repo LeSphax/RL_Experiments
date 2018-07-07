@@ -20,7 +20,7 @@ class DNNValue(MatchmakingValue):
                 hidden_layer = tf.contrib.layers.fully_connected(
                     inputs=previous_layer,
                     num_outputs=16,
-                    activation_fn=None, #tf.nn.relu,
+                    activation_fn=tf.nn.relu,
                     weights_initializer=tf.zeros_initializer
                 )
                 previous_layer = hidden_layer

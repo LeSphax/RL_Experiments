@@ -14,8 +14,8 @@ import utils.keyPoller as kp
 import random
 
 env = gym.make('Matchmaking-v0')
-random.seed(1)
-env.seed(1)
+random.seed(12)
+env.seed(12)
 
 name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -23,7 +23,7 @@ name = datetime.now().strftime("%Y%m%d-%H%M%S")
 def simulate():
 
     policy_estimator = dnn_policy.DNNPolicy(env,1)
-    value_estimator = dnn_value.DNNValue(env,1)
+    value_estimator = dnn_value.DNNValue(env,0)
 
     INCORRECT_ACTIONS = tf.placeholder(tf.float32, ())
     HOLDS_NOT_EMPTY = tf.placeholder(tf.float32, ())
@@ -47,7 +47,7 @@ def simulate():
     sess = tf.Session()
     train_writer = tf.summary.FileWriter('./train/{name}'.format(name=name), sess.graph)
 
-    for e in range(100000):
+    for e in range(1000000):
         experiences = {
             'obs': [],
             'actions': [],
@@ -112,12 +112,11 @@ def simulate():
                 POLICY_LOSS: policy_loss
             }
         )
-        # print(value_loss)
-        # print(policy_loss)
-        # print("Values ", np.reshape(experiences['values'],[-1]))
-        # print("Rewards ", experiences['rewards'])
-        # print("Advantages ", np.round(np.reshape(advantages, [-1]),1)[0:100])
-        # print("Returns ", np.round(np.reshape(returns, [-1]),1)[0:100])
+        print("Actions ", np.reshape(experiences['actions'],[-1]))
+        print("Values ", np.reshape(experiences['values'],[-1]))
+        print("Rewards ", experiences['rewards'])
+        print("Advantages ", np.round(np.reshape(advantages, [-1]),1)[0:100])
+        print("Returns ", np.round(np.reshape(returns, [-1]),1)[0:100])
         train_writer.add_summary(summary, e)
 
 
