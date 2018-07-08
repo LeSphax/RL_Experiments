@@ -50,7 +50,7 @@ def simulate():
     train_writer = tf.summary.FileWriter('./train/{name}'.format(name=name), sess.graph)
 
     for e in range(1000000):
-        experiences = {
+        episode = {
             'obs': [],
             'actions': [],
             'rewards': [],
@@ -63,50 +63,48 @@ def simulate():
             if kp.render:
                 env.render()
 
-            experiences['obs'].append(obs)
+            episode['obs'].append(obs)
             value = value_estimator.get_value(obs)
-            experiences['values'].append(value)
+            episode['values'].append(value)
             
             action = policy_estimator.get_action(obs)
             obs, reward, done, _ = env.step(action)
 
-            experiences['actions'].append(action)
-            experiences['rewards'].append(reward)
+            episode['actions'].append(action)
+            episode['rewards'].append(reward)
 
         next_value = 0 if done else value_estimator.get_value(obs)
 
         advantages, returns = gae(
-            rewards=experiences['rewards'],
-            values=experiences['values'],
+            rewards=episode['rewards'],
+            values=episode['values'],
             next_value=next_value,
             discount_factor=0.95
         )
 
         entropy, policy_loss = policy_estimator.train_model(
-            obs=experiences['obs'],
-            actions=experiences['actions'],
+            obs=episode['obs'],
+            actions=episode['actions'],
             advantages=advantages
         )
 
         value_loss = value_estimator.train_model(
-            obs=experiences['obs'],
+            obs=episode['obs'],
             returns=returns,
-        )
+        )    
 
-       
-
-        actions = np.array(experiences['actions'])
-        rewards = np.array(experiences['rewards'])
-        observations = np.array(experiences['obs'])
+        actions = np.array(episode['actions'])
+        rewards = np.array(episode['rewards'])
+        observations = np.array(episode['obs'])
 
         non_empty_obs = np.logical_or.reduce(observations != -1, axis =1)
         holds = actions == 10
         holds_not_empty = np.logical_and(holds, non_empty_obs)
 
 
-        print("Actions ", np.reshape(experiences['actions'],[-1]))
-        print("Values ", np.reshape(experiences['values'],[-1]))
-        print("Rewards ", experiences['rewards'])
+        print("Actions ", np.reshape(episode['actions'],[-1]))
+        print("Values ", np.reshape(episode['values'],[-1]))
+        print("Rewards ", episode['rewards'])
         print("Advantages ", np.round(np.reshape(advantages, [-1]),1)[0:100])
         print("Returns ", np.round(np.reshape(returns, [-1]),1)[0:100])
         summary = sess.run(
@@ -117,12 +115,11 @@ def simulate():
                 INCORRECT_ACTIONS: rewards[np.where(rewards == -0.1)].size,
                 HOLDS_NOT_EMPTY: holds_not_empty[holds_not_empty].size,
                 HOLDS: holds[holds].size,
-                TOTAL_REWARD: np.sum(experiences['rewards']),
+                TOTAL_REWARD: np.sum(episode['rewards']),
                 VALUE_LOSS: value_loss,
                 POLICY_LOSS: policy_loss
             }
-        )
-        
+        )       
         train_writer.add_summary(summary, e)
 
 
