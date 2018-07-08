@@ -35,7 +35,7 @@ class DNNValue(MatchmakingValue):
         self.RETURNS = tf.placeholder(tf.float32, [None])
 
         self.loss = tf.reduce_mean(tf.squared_difference(self.value, self.RETURNS))
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+        optimizer = tf.train.AdamOptimizer(learning_rate=2.5e-4)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
         self.sess = tf.Session()

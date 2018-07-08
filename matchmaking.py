@@ -32,7 +32,6 @@ def simulate():
     MEAN = tf.placeholder(tf.float32, ())
     TOTAL_REWARD = tf.placeholder(tf.float32, ())
     VALUE = tf.placeholder(tf.float32, [None])
-    DISCOUNTED_REWARDS = tf.placeholder(tf.float32, ())
     ADVANTAGES = tf.placeholder(tf.float32, ())
     VALUE_LOSS = tf.placeholder(tf.float32, ())
     POLICY_LOSS = tf.placeholder(tf.float32, ())
@@ -40,7 +39,6 @@ def simulate():
     tf.summary.scalar('mean', MEAN)
     tf.summary.scalar('total_reward', TOTAL_REWARD)
     tf.summary.histogram('values', VALUE)
-    tf.summary.scalar('discounted_rewards', DISCOUNTED_REWARDS)
     tf.summary.scalar('advantages', ADVANTAGES)
     tf.summary.scalar('value_loss', VALUE_LOSS)
     tf.summary.scalar('policy_loss', POLICY_LOSS)
@@ -76,7 +74,6 @@ def simulate():
                 MEAN: average_reward.average,
                 TOTAL_REWARD: np.sum(experiences['rewards']),
                 VALUE: np.reshape(experiences['values'], [-1]),
-                DISCOUNTED_REWARDS: np.mean(discounted_rewards),
                 ADVANTAGES: np.mean(advantages),
                 VALUE_LOSS: value_loss,
                 POLICY_LOSS: policy_loss

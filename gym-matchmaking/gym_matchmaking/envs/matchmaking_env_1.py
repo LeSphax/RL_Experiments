@@ -31,7 +31,10 @@ class MatchmakingEnv1(gym.Env):
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
+
         self.error_last_step = False
+        self.timestep += 1
+
         if len(self.state) > action:
             if self.room == -1:
                 self.room = self.pop_player(action)
@@ -55,15 +58,15 @@ class MatchmakingEnv1(gym.Env):
             reward = -0.1
             self.error_last_step = True
 
-        return self.get_return_state(), reward, False, {}
+        return self.get_return_state(), reward, self.timestep == 20, {}
 
     def reset(self):
+        self.timestep = 0
         self.history = []
 
         self.room = -1
         self.state = np.random.rand(self.state_size)
 
-        self.state.sort()
         self.refresh_padding()
 
         return self.get_return_state()

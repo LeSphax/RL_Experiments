@@ -12,10 +12,12 @@ from datetime import datetime
 from utils.gae import gae
 import utils.keyPoller as kp
 import random
+import time
 
 env = gym.make('Matchmaking-v1')
-random.seed(1)
-env.seed(1)
+seed = 1
+random.seed(seed)
+env.seed(seed)
 
 name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -23,23 +25,23 @@ name = datetime.now().strftime("%Y%m%d-%H%M%S")
 def simulate():
 
     policy_estimator = dnn_policy.DNNPolicy(env,2)
-    value_estimator = dnn_value.DNNValue(env,1)
+    value_estimator = dnn_value.DNNValue(env,2)
 
+    ENTROPY = tf.placeholder(tf.float32, ())
+    EPISODE_TIME = tf.placeholder(tf.float32, ())
     INCORRECT_ACTIONS = tf.placeholder(tf.float32, ())
     HOLDS_NOT_EMPTY = tf.placeholder(tf.float32, ())
     HOLDS = tf.placeholder(tf.float32, ())
     TOTAL_REWARD = tf.placeholder(tf.float32, ())
-    VALUE = tf.placeholder(tf.float32, [None])
-    ADVANTAGES = tf.placeholder(tf.float32, [None])
     VALUE_LOSS = tf.placeholder(tf.float32, ())
     POLICY_LOSS = tf.placeholder(tf.float32, ())
 
+    tf.summary.scalar('entropy', ENTROPY)
+    tf.summary.scalar('episode_time', EPISODE_TIME)
     tf.summary.scalar('incorrect_actions', INCORRECT_ACTIONS)
     tf.summary.scalar('holds_not_empty', HOLDS_NOT_EMPTY)
     tf.summary.scalar('holds', HOLDS)
     tf.summary.scalar('total_reward', TOTAL_REWARD)
-    tf.summary.histogram('values', VALUE)
-    tf.summary.histogram('advantages', ADVANTAGES)
     tf.summary.scalar('value_loss', VALUE_LOSS)
     tf.summary.scalar('policy_loss', POLICY_LOSS)
     merged = tf.summary.merge_all()
@@ -55,6 +57,7 @@ def simulate():
             'values': [],
         }
         obs = env.reset()
+        start = time.time()
         for t in range(20):
             kp.checkKeyStrokes(sess, name)
             if kp.render:
@@ -75,10 +78,11 @@ def simulate():
         advantages, returns = gae(
             rewards=experiences['rewards'],
             values=experiences['values'],
-            next_value=next_value
+            next_value=next_value,
+            discount_factor=0.95
         )
 
-        policy_loss = policy_estimator.train_model(
+        entropy, policy_loss = policy_estimator.train_model(
             obs=experiences['obs'],
             actions=experiences['actions'],
             advantages=advantages
@@ -99,24 +103,26 @@ def simulate():
         holds = actions == 10
         holds_not_empty = np.logical_and(holds, non_empty_obs)
 
-        summary = sess.run(
-            merged,
-            {
-                INCORRECT_ACTIONS: rewards[np.where(rewards == -0.1)].size,
-                HOLDS_NOT_EMPTY: holds_not_empty[holds_not_empty].size,
-                HOLDS: holds[holds].size,
-                TOTAL_REWARD: np.sum(experiences['rewards']),
-                VALUE: np.reshape(experiences['values'], [-1]),
-                ADVANTAGES: advantages,
-                VALUE_LOSS: value_loss,
-                POLICY_LOSS: policy_loss
-            }
-        )
+
         print("Actions ", np.reshape(experiences['actions'],[-1]))
         print("Values ", np.reshape(experiences['values'],[-1]))
         print("Rewards ", experiences['rewards'])
         print("Advantages ", np.round(np.reshape(advantages, [-1]),1)[0:100])
         print("Returns ", np.round(np.reshape(returns, [-1]),1)[0:100])
+        summary = sess.run(
+            merged,
+            {
+                ENTROPY: entropy,
+                EPISODE_TIME: time.time()-start,
+                INCORRECT_ACTIONS: rewards[np.where(rewards == -0.1)].size,
+                HOLDS_NOT_EMPTY: holds_not_empty[holds_not_empty].size,
+                HOLDS: holds[holds].size,
+                TOTAL_REWARD: np.sum(experiences['rewards']),
+                VALUE_LOSS: value_loss,
+                POLICY_LOSS: policy_loss
+            }
+        )
+        
         train_writer.add_summary(summary, e)
 
 

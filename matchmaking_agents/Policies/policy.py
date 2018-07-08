@@ -8,4 +8,4 @@ class MatchmakingPolicy(object):
         return
 
     def train_model(self, obs, actions, advantages):
-        return 0
+        return 0, 0
