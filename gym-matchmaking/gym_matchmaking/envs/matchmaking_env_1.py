@@ -7,7 +7,7 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 
 
-class MatchmakingEnv(gym.Env):
+class MatchmakingEnv1(gym.Env):
     metadata = {'render.modes': ['human']}
 
     padding_value = -1
@@ -16,54 +16,70 @@ class MatchmakingEnv(gym.Env):
         self.state_size = 10
         self.max_history_size = 10
         # A list of player ratings
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(10,))
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(11,), dtype=np.float32)
         # Indexes for the two players we want to match
-        self.action_space = spaces.Tuple((spaces.Discrete(self.state_size+1), spaces.Discrete(self.state_size+1)))
+        self.action_space = spaces.Discrete(self.state_size+1)
+        self.room = None
         self.viewer = None
         self.state = None
         self.padded_state = None
         self.history = None
         self.error_last_step = False
 
-    def seed(self,seed):
+    def seed(self, seed):
         random.seed(seed)
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
         self.error_last_step = False
-        if action[0] != action[1] and len(self.state) > action[0] and len(self.state) > action[1]:
+        if len(self.state) > action:
+            if self.room == -1:
+                self.room = self.pop_player(action)
 
-            p1 = self.state[action[0]]
-            p2 = self.state[action[1]]
+                reward = 0
+            else:
 
-            self.history.insert(0, [p1, p2])
-            if(len(self.history) > self.max_history_size):
-                self.history = self.history[:-1]
+                player1 = self.room
+                player2 = self.pop_player(action)
 
-            self.state = np.delete(self.state, action)
+                self.history.insert(0, [player1, player2])
+                if(len(self.history) > self.max_history_size):
+                    self.history = self.history[:-1]
 
-            paddingLen = self.state_size - len(self.state)
-            self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(self.padding_value, self.padding_value))
-
-            reward = 1 - (pow((p1 - p2), 2) * 2)
-        elif action[0] == self.state_size and action[1] == self.state_size:
+                reward = 1 - (pow((player1 - player2), 2) * 2)
+               
+                self.room = -1
+        elif action == self.state_size:
             reward = 0
         else:
             reward = -0.1
             self.error_last_step = True
 
-        return self.padded_state, reward, False, {}
+        return self.get_return_state(), reward, False, {}
 
     def reset(self):
         self.history = []
 
+        self.room = -1
         self.state = np.random.rand(self.state_size)
 
         self.state.sort()
+        self.refresh_padding()
+
+        return self.get_return_state()
+
+    def pop_player(self, index):
+        player = self.state[index]
+        self.state = np.delete(self.state, index)
+        self.refresh_padding()
+        return player
+
+    def refresh_padding(self):
         paddingLen = self.state_size - len(self.state)
         self.padded_state = np.pad(np.array(self.state), (0, paddingLen), 'constant', constant_values=(self.padding_value, self.padding_value))
 
-        return self.padded_state
+    def get_return_state(self):
+        return np.insert(self.padded_state, 0, self.room)
 
     def render(self, mode='human', close=False):
         screen_width = 600
@@ -86,7 +102,7 @@ class MatchmakingEnv(gym.Env):
                 tiles[idx].add_attr(self.transforms[idx])
                 self.colors[idx] = tiles[idx].attrs[0]
                 self.viewer.add_geom(tiles[idx])
-            for _ in range(self.max_history_size * 2 + 2):
+            for _ in range(self.max_history_size * 2 + 3):
                 tile = rendering.FilledPolygon([(l, b), (l, t), (r, t), (r, b)])
                 tiles.append(tile)
                 transform = rendering.Transform()
@@ -108,12 +124,22 @@ class MatchmakingEnv(gym.Env):
             self.transforms[p2Idx].set_translation(150, 150 + 30 * idx)
             self.colors[p1Idx].vec4 = ((0, self.history[idx][0], 0, 1.0))
             self.colors[p2Idx].vec4 = ((0, self.history[idx][1], 0, 1.0))
-        
-        #Tile to show time passing
-        self.transforms[self.state_size + self.max_history_size *2].set_translation(500, 300)
-        self.colors[self.state_size + self.max_history_size *2].vec4 = ((0, 0, 0, 1.0 if self.colors[self.state_size + self.max_history_size *2].vec4[3] == 0 else 0))
-        #Tile to show errors
-        self.transforms[self.state_size + self.max_history_size *2 +1].set_translation(500, 200)
-        self.colors[self.state_size + self.max_history_size *2 +1].vec4 = ((1.0, 0, 0, 1.0 if self.error_last_step else 0))
+
+
+        # Tile to show the room
+        index = self.state_size + self.max_history_size * 2
+        if self.room != -1:
+            self.transforms[index].set_translation(300, 150)
+            self.colors[index].vec4 = ((0, self.room, 0, 1.0))
+        else:
+            self.colors[index].vec4 = ((0, 0, 0, 0))
+        # Tile to show time passing
+        index = index + 1
+        self.transforms[index].set_translation(500, 300)
+        self.colors[index].vec4 = ((0, 0, 1.0, 1.0 if self.colors[index].vec4[3] == 0 else 0))
+        # Tile to show errors
+        index = index + 1
+        self.transforms[index].set_translation(500, 200)
+        self.colors[index].vec4 = ((1.0, 0, 0, 1.0 if self.error_last_step else 0))
         time.sleep(0.3)
         return self.viewer.render(return_rgb_array=mode == 'rgb_array')
