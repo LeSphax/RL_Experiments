@@ -47,7 +47,7 @@ class DNNPolicy(MatchmakingPolicy):
 
         self.losses = - tf.log(self.prob_of_picked_action) * self.ADVANTAGES - self.entropy * 0.01
         self.loss = tf.reduce_mean(self.losses)
-        optimizer = tf.train.AdamOptimizer(learning_rate=2.5e-4)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
         self.sess = tf.Session()

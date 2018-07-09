@@ -31,7 +31,6 @@ class MatchmakingEnv1(gym.Env):
 
     def step(self, action):
         assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
-
         self.error_last_step = False
         self.timestep += 1
 
@@ -66,6 +65,7 @@ class MatchmakingEnv1(gym.Env):
 
         self.room = -1
         self.state = np.random.rand(self.state_size)
+        self.state.sort()
 
         self.refresh_padding()
 

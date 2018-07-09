@@ -14,7 +14,7 @@ import utils.keyPoller as kp
 import random
 import time
 
-env = gym.make('Matchmaking-v1')
+env = gym.make('CartPole-v1')
 seed = 1
 random.seed(seed)
 env.seed(seed)
@@ -24,8 +24,8 @@ name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 def simulate():
 
-    policy_estimator = dnn_policy.DNNPolicy(env,2)
-    value_estimator = dnn_value.DNNValue(env,2)
+    policy_estimator = dnn_policy.DNNPolicy(env,0)
+    value_estimator = dnn_value.DNNValue(env,0)
 
     ENTROPY = tf.placeholder(tf.float32, ())
     EPISODE_TIME = tf.placeholder(tf.float32, ())
@@ -58,7 +58,7 @@ def simulate():
         }
         obs = env.reset()
         start = time.time()
-        for t in range(20):
+        for t in range(500):
             kp.checkKeyStrokes(sess, name)
             if kp.render:
                 env.render()
@@ -72,6 +72,8 @@ def simulate():
 
             episode['actions'].append(action)
             episode['rewards'].append(reward)
+            if done:
+                break
 
         next_value = 0 if done else value_estimator.get_value(obs)
 
@@ -101,12 +103,11 @@ def simulate():
         holds = actions == 10
         holds_not_empty = np.logical_and(holds, non_empty_obs)
 
-
-        print("Actions ", np.reshape(episode['actions'],[-1]))
-        print("Values ", np.reshape(episode['values'],[-1]))
-        print("Rewards ", episode['rewards'])
-        print("Advantages ", np.round(np.reshape(advantages, [-1]),1)[0:100])
-        print("Returns ", np.round(np.reshape(returns, [-1]),1)[0:100])
+        print("Timestep ", t)
+        print("Values ", np.reshape(episode['values'],[-1]), next_value, len(np.reshape(episode['values'],[-1])))
+        print("Rewards ", episode['rewards'], len(episode['rewards']))
+        print("Advantages ", np.round(np.reshape(advantages, [-1]),1))
+        print("Returns ", np.round(np.reshape(returns, [-1]),1))
         summary = sess.run(
             merged,
             {
