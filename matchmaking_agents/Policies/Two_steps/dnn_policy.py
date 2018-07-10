@@ -5,9 +5,25 @@ import tensorflow as tf
 import numpy as np
 
 
+class CategoricalPd(object):
+    def __init__(self, logits):
+        self.logits = logits
+    def neglogp(self, x):
+        one_hot_actions = tf.one_hot(x, self.logits.get_shape().as_list()[-1])
+        return tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=one_hot_actions)
+    def entropy(self):
+        a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keep_dims=True)
+        ea0 = tf.exp(a0)
+        z0 = tf.reduce_sum(ea0, axis=-1, keep_dims=True)
+        p0 = ea0 / z0
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
+    def sample(self):
+        u = tf.random_uniform(tf.shape(self.logits))
+        return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
+
 class DNNPolicy(MatchmakingPolicy):
 
-    def __init__(self, env, num_layers = 1):
+    def __init__(self, env, num_layers=1):
         self.input_size = env.observation_space.shape[0]
         self.output_size = env.action_space.n
         self.create_model(env, num_layers)
@@ -20,33 +36,36 @@ class DNNPolicy(MatchmakingPolicy):
             for idx in range(num_layers):
                 hidden_layer = tf.contrib.layers.fully_connected(
                     inputs=previous_layer,
-                    num_outputs=16,
-                    activation_fn=tf.nn.relu,
-                    weights_initializer=tf.zeros_initializer
+                    num_outputs=64,
+                    activation_fn=tf.nn.tanh,
+                    weights_initializer=tf.constant_initializer(np.sqrt(2))
                 )
                 previous_layer = hidden_layer
 
-            self.output_layer = tf.squeeze(tf.contrib.layers.fully_connected(
+            self.output_layer = tf.contrib.layers.fully_connected(
                 inputs=previous_layer,
                 num_outputs=self.output_size,
                 activation_fn=None,
                 weights_initializer=tf.zeros_initializer
-            ))
+            )
 
-            self.action_probs = tf.nn.softmax(self.output_layer)
+            self.probability_distribution = CategoricalPd(self.output_layer)
+
+            self.action = self.probability_distribution.sample()
+            self.neglogp_action = self.probability_distribution.neglogp(self.action)
 
         self.ADVANTAGES = tf.placeholder(tf.float32, [None])
         self.ACTIONS = tf.placeholder(tf.int32, [None])
+        self.OLDNEGLOGP_ACTIONS = tf.placeholder(tf.float32, [None])
 
-        self.action_indices = tf.range(tf.shape(self.ACTIONS)[0])
-        self.prob_indices = tf.concat([tf.reshape(self.action_indices, [-1, 1]), tf.reshape(self.ACTIONS, [-1, 1])], axis=1)
-        self.prob_of_picked_action = tf.gather_nd(self.action_probs, self.prob_indices)
+        self.new_neglogp_action = self.probability_distribution.neglogp(self.ACTIONS)
 
-        self.entropy = - tf.reduce_sum(self.action_probs * tf.log(self.action_probs), 1, name="entropy")
-        self.entropy_mean = tf.reduce_mean(self.entropy)
+        self.entropy = tf.reduce_mean(self.probability_distribution.entropy())
 
-        self.losses = - tf.log(self.prob_of_picked_action) * self.ADVANTAGES - self.entropy * 0.01
-        self.loss = tf.reduce_mean(self.losses)
+        ratio = tf.exp(self.OLDNEGLOGP_ACTIONS - self.new_neglogp_action)
+        pg_losses = -self.ADVANTAGES * ratio
+        pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - 0.2, 1.0 + 0.2)
+        self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
         optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
@@ -55,11 +74,19 @@ class DNNPolicy(MatchmakingPolicy):
         self.sess.run(init)
 
     def get_action(self, obs):
-        action_probs = self.sess.run(self.action_probs, {self.X: np.reshape(obs, [1, self.input_size])})
+        action, neglogp_action = self.sess.run([self.action, self.neglogp_action], {self.X: np.reshape(obs, [1, self.input_size])})
 
-        return np.random.choice(np.arange(len(action_probs)), p=action_probs)
+        return action[0], neglogp_action[0]
 
-    def train_model(self, obs, actions, advantages):
+    def train_model(self, obs, actions, neglogp_actions, advantages):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        entropy, loss, _ = self.sess.run([self.entropy_mean, self.loss, self.train], {self.X: obs, self.ACTIONS: actions, self.ADVANTAGES: advantages})
+        entropy, loss, _ = self.sess.run(
+            [self.entropy, self.loss, self.train],
+            {
+                self.X: obs,
+                self.ACTIONS: actions,
+                self.OLDNEGLOGP_ACTIONS: neglogp_actions,
+                self.ADVANTAGES: advantages
+            }
+        )
         return entropy, loss
