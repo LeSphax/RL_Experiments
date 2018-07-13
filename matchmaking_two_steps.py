@@ -6,6 +6,8 @@ import gym_matchmaking
 import matchmaking_agents
 from matchmaking_agents.Policies.Two_steps import scripted_policy, dnn_policy, random_policy, scripted_random_policy
 from matchmaking_agents.Values import random_value, dnn_value
+from wrappers.monitor_env import MonitorEnv
+from wrappers.auto_reset_env import AutoResetEnv
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
@@ -16,59 +18,82 @@ import time
 
 env = gym.make('CartPole-v1')
 seed = 1
-random.seed(seed)
 env.seed(seed)
-SUMMARY_INTERVAL = 100
+random.seed(seed)
+
+env = MonitorEnv(env)
+SUMMARY_INTERVAL = 10
+BATCH_SIZE = 128
+NB_EPOCHS = 4
+NB_MINIBATCH = 4
 
 name = datetime.now().strftime("%Y%m%d-%H%M%S")
 
+class EnvRunner(object):
+    def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.99, gae_weighting=0.95):
+        self.env = AutoResetEnv(env)
+        self.obs = self.env.reset()
+        self.value_estimator = value_estimator
+        self.policy_estimator = policy_estimator
+        self.discount_factor = discount_factor
+        self.gae_weighting = gae_weighting
 
-def run_episode(value_estimator, policy_estimator):
-    trajectory = {
-        'obs': [],
-        'actions': [],
-        'rewards': [],
-        'values': [],
-        'neglogp_actions': []
-    }
-    obs = env.reset()
-    for t in range(500):
-        kp.checkKeyStrokes(None, name)
-        if kp.render:
-            env.render()
+    def run_timesteps(self, nb_timesteps):
+        batch = {
+            'obs': [],
+            'actions': [],
+            'rewards': [],
+            'values': [],
+            'dones': [],
+            'neglogp_actions': [],
+            'advantages': [],
+            'returns': []
+        }
+        epinfos = []
 
-        trajectory['obs'].append(obs)
-        value = value_estimator.get_value(obs)
-        trajectory['values'].append(value)
+        for t in range(nb_timesteps):
+            kp.checkKeyStrokes(None, name)
+            if kp.render:
+                self.env.render()
 
-        action, neglogp_action = policy_estimator.get_action(obs)
-        obs, reward, done, _ = env.step(action)
+            batch['obs'].append(self.obs)
+            value = self.value_estimator.get_value(self.obs)
+            batch['values'].append(value)
 
-        trajectory['neglogp_actions'].append(neglogp_action)
-        trajectory['actions'].append(action)
-        trajectory['rewards'].append(reward)
-        if done:
-            break
+            action, neglogp_action = self.policy_estimator.get_action(self.obs)
+            self.obs, reward, done, info = self.env.step(action)
 
-    next_value = 0 if done else value_estimator.get_value(obs)
+            batch['neglogp_actions'].append(neglogp_action)
+            batch['actions'].append(action)
+            batch['rewards'].append(reward)
+            batch['dones'].append(done)
 
-    advantages, returns = gae(
-        rewards=trajectory['rewards'],
-        values=trajectory['values'],
-        next_value=next_value,
-        discount_factor=0.95
-    )
+            maybeepinfo = info.get('episode')
+            if maybeepinfo:
+                epinfos.append(maybeepinfo)
 
-    return {
-        'obs': trajectory['obs'],
-        'actions': trajectory['actions'],
-        'neglogp_actions': trajectory['neglogp_actions'],
-        'rewards': trajectory['rewards'],
-        'values': trajectory['values'],
-        'next_value': [next_value],
-        'advantages': advantages,
-        'returns': returns
-    }
+        returns = np.zeros_like(batch['rewards'], dtype=float)
+        advantages = np.zeros_like(batch['rewards'], dtype=float)
+
+        next_value = 0 if done else self.value_estimator.get_value(self.obs)
+        batch['values'] = np.append(batch['values'], next_value)
+        last_discounted_advantage = 0
+        for idx in reversed(range(nb_timesteps)):
+            if batch['dones'][idx] == 1:
+                next_value = 0
+                use_last_discounted_adv = 0
+            else:
+                next_value = batch['values'][idx+1]
+                use_last_discounted_adv = 1
+
+            td_error = self.discount_factor * next_value + batch['rewards'][idx] - batch['values'][idx]
+            advantages[idx] = last_discounted_advantage = td_error + self.discount_factor * self.gae_weighting * last_discounted_advantage * use_last_discounted_adv
+        returns = advantages + batch['values'][:-1]
+
+        batch['advantages'] = advantages
+        batch['returns'] = returns
+
+        return {k: np.asarray(batch[k]) for k in batch}, epinfos
 
 
 def simulate():
@@ -78,20 +103,12 @@ def simulate():
 
     ENTROPY = tf.placeholder(tf.float32, ())
     FPS = tf.placeholder(tf.float32, ())
-    # INCORRECT_ACTIONS = tf.placeholder(tf.float32, ())
-    # HOLDS_NOT_EMPTY = tf.placeholder(tf.float32, ())
-    # HOLDS = tf.placeholder(tf.float32, ())
     VALUE_LOSS = tf.placeholder(tf.float32, ())
     POLICY_LOSS = tf.placeholder(tf.float32, ())
     TOTAL_REWARD = tf.placeholder(tf.float32, ())
-    TOTAL_TIMESTEPS = tf.placeholder(tf.float32, ())
 
     tf.summary.scalar('entropy', ENTROPY)
     tf.summary.scalar('fps', FPS)
-    tf.summary.scalar('total_timesteps', TOTAL_TIMESTEPS)
-    # tf.summary.scalar('incorrect_actions', INCORRECT_ACTIONS)
-    # tf.summary.scalar('holds_not_empty', HOLDS_NOT_EMPTY)
-    # tf.summary.scalar('holds', HOLDS)
     tf.summary.scalar('value_loss', VALUE_LOSS)
     tf.summary.scalar('policy_loss', POLICY_LOSS)
     tf.summary.scalar('total_reward', TOTAL_REWARD)
@@ -103,82 +120,72 @@ def simulate():
 
     training_batch = []
     summary_batch = {
-        'rewards': [],
+        'epinfos': [],
         'value_losses': [],
         'policy_losses': [],
         'entropies': []
     }
     total_timesteps = 0
-    start = time.time()
+    previous_summary_time = time.time()
+    runner = EnvRunner(env, value_estimator, policy_estimator)
 
-    for e in range(1000000):
-        episode = run_episode(value_estimator, policy_estimator)
+    for t in range(100000 // BATCH_SIZE):
+        training_batch, epinfos = runner.run_timesteps(BATCH_SIZE)
+        summary_batch['epinfos'].append(epinfos)
 
-        training_batch.append(episode)
+        inds = np.arange(BATCH_SIZE)
+        for _ in range(NB_EPOCHS):
 
-        if len(training_batch) == 10:
-            flat_training_batch = {k: np.concatenate([np.array(dic[k]) for dic in training_batch]) for k in training_batch[0]}
+            np.random.shuffle(inds)
+            minibatch_size = BATCH_SIZE//NB_MINIBATCH
+            for start in range(0, BATCH_SIZE, minibatch_size):
+                end = start + minibatch_size
+                mb_inds = inds[start:end]
 
-            entropy, policy_loss = policy_estimator.train_model(
-                obs=flat_training_batch['obs'],
-                actions=flat_training_batch['actions'],
-                neglogp_actions=flat_training_batch['neglogp_actions'],
-                advantages=flat_training_batch['advantages'],
-            )
+                entropy, policy_loss = policy_estimator.train_model(
+                    obs=training_batch['obs'][mb_inds],
+                    actions=training_batch['actions'][mb_inds],
+                    neglogp_actions=training_batch['neglogp_actions'][mb_inds],
+                    advantages=training_batch['advantages'][mb_inds],
+                )
 
-            value_loss = value_estimator.train_model(
-                obs=flat_training_batch['obs'],
-                returns=flat_training_batch['returns'],
-            )
+                value_loss = value_estimator.train_model(
+                    obs=training_batch['obs'][mb_inds],
+                    values=training_batch['values'][mb_inds],
+                    returns=training_batch['returns'][mb_inds],
+                )
+                summary_batch['value_losses'].append(value_loss)
+                summary_batch['policy_losses'].append(policy_loss)
+                summary_batch['entropies'].append(entropy)
 
-            summary_batch['rewards'].append(flat_training_batch['rewards'])
-            summary_batch['value_losses'].append([value_loss])
-            summary_batch['policy_losses'].append([policy_loss])
-            summary_batch['entropies'].append([entropy])
-            training_batch = []
+        if t % SUMMARY_INTERVAL == 0 and t != 0:
+            epinfos = np.concatenate([np.array(list) for list in summary_batch['epinfos']])
+            eprewards = [epinfo['total_reward'] for epinfo in epinfos]
+            epnb_steps = [epinfo['nb_steps'] for epinfo in epinfos]
 
-        if e % SUMMARY_INTERVAL == 0 and e != 0:
-            flat_summary_batch = {k: np.concatenate([np.array(list) for list in summary_batch[k]]) for k in summary_batch}
-
-            # actions = np.array(trajectory['actions'])
-            # rewards = np.array(trajectory['rewards'])
-            # observations = np.array(trajectory['obs'])
-
-            # non_empty_obs = np.logical_or.reduce(observations != -1, axis =1)
-            # holds = actions == 10
-            # holds_not_empty = np.logical_and(holds, non_empty_obs)
-
-            print("Timesteps ", len(episode['values']))
-            print("Values ", episode['values'], episode['next_value'])
-            print("Rewards ", episode['rewards'])
-            print("Advantages ", episode['advantages'])
-            print("Returns ", episode['returns'])
-
-            timesteps = len(flat_summary_batch['rewards'])
-            total_timesteps += timesteps
-            time_between_summaries = time.time() - start
-            start = time.time()
+            time_between_summaries = time.time() - previous_summary_time
+            previous_summary_time = time.time()
             summary = sess.run(
                 merged,
                 {
-                    ENTROPY:  np.mean(flat_summary_batch['entropies']),
-                    FPS: timesteps/time_between_summaries,
-                    TOTAL_TIMESTEPS: total_timesteps,
+                    ENTROPY:  np.mean(summary_batch['entropies']),
+                    FPS: BATCH_SIZE * SUMMARY_INTERVAL/time_between_summaries,
                     # INCORRECT_ACTIONS: rewards[np.where(rewards == -0.1)].size,
                     # HOLDS_NOT_EMPTY: holds_not_empty[holds_not_empty].size,
                     # HOLDS: holds[holds].size,
-                    VALUE_LOSS: np.mean(flat_summary_batch['value_losses']),
-                    POLICY_LOSS: np.mean(flat_summary_batch['policy_losses']),
-                    TOTAL_REWARD: np.sum(flat_summary_batch['rewards']) / SUMMARY_INTERVAL,
+                    VALUE_LOSS: np.mean(summary_batch['value_losses']),
+                    POLICY_LOSS: np.mean(summary_batch['policy_losses']),
+                    TOTAL_REWARD: np.mean(eprewards),
                 }
             )
             summary_batch = {
                 'rewards': [],
                 'value_losses': [],
                 'policy_losses': [],
-                'entropies': []
+                'entropies': [],
+                'epinfos': [],
             }
-            train_writer.add_summary(summary, e)
+            train_writer.add_summary(summary, t * BATCH_SIZE)
 
 
 if __name__ == "__main__":
