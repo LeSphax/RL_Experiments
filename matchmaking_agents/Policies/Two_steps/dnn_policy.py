@@ -57,6 +57,8 @@ class DNNPolicy(MatchmakingPolicy):
         self.ADVANTAGES = tf.placeholder(tf.float32, [None])
         self.ACTIONS = tf.placeholder(tf.int32, [None])
         self.OLDNEGLOGP_ACTIONS = tf.placeholder(tf.float32, [None])
+        self.LEARNING_RATE = tf.placeholder(tf.float32, ())
+        self.CLIPPING = tf.placeholder(tf.float32, ())
 
         self.new_neglogp_action = self.probability_distribution.neglogp(self.ACTIONS)
 
@@ -64,9 +66,9 @@ class DNNPolicy(MatchmakingPolicy):
 
         ratio = tf.exp(self.OLDNEGLOGP_ACTIONS - self.new_neglogp_action)
         pg_losses = -self.ADVANTAGES * ratio
-        pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - 0.2, 1.0 + 0.2)
+        pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - self.CLIPPING, 1.0 + self.CLIPPING)
         self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
         self.sess = tf.Session()
@@ -78,7 +80,7 @@ class DNNPolicy(MatchmakingPolicy):
 
         return action[0], neglogp_action[0]
 
-    def train_model(self, obs, actions, neglogp_actions, advantages):
+    def train_model(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         entropy, loss, _ = self.sess.run(
             [self.entropy, self.loss, self.train],
@@ -86,7 +88,9 @@ class DNNPolicy(MatchmakingPolicy):
                 self.X: obs,
                 self.ACTIONS: actions,
                 self.OLDNEGLOGP_ACTIONS: neglogp_actions,
-                self.ADVANTAGES: advantages
+                self.ADVANTAGES: advantages,
+                self.CLIPPING: clipping,
+                self.LEARNING_RATE: learning_rate,
             }
         )
         return entropy, loss

@@ -27,30 +27,41 @@ class DNNValue(MatchmakingValue):
 
             self.value = tf.squeeze(tf.contrib.layers.fully_connected(
                 inputs=self.X,
-                num_outputs= 1,
+                num_outputs=1,
                 activation_fn=None,
                 weights_initializer=tf.zeros_initializer
             ))
 
         self.OLD_VALUES = tf.placeholder(tf.float32, [None])
         self.RETURNS = tf.placeholder(tf.float32, [None])
+        self.LEARNING_RATE = tf.placeholder(tf.float32, ())
+        self.CLIPPING = tf.placeholder(tf.float32, ())
 
-        value_clipped = self.OLD_VALUES + tf.clip_by_value(self.value - self.OLD_VALUES, - 0.2, 0.2)
+        value_clipped = self.OLD_VALUES + tf.clip_by_value(self.value - self.OLD_VALUES, -self.CLIPPING,  self.CLIPPING)
         losses1 = tf.square(self.value - self.RETURNS)
         losses2 = tf.square(value_clipped - self.RETURNS)
         self.loss = .5 * tf.reduce_mean(tf.maximum(losses1, losses2))
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.01)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE)
         self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
         self.sess = tf.Session()
         init = tf.global_variables_initializer()
         self.sess.run(init)
 
-
-    def get_value(self,obs):
+    def get_value(self, obs):
         # print(obs)
         return self.sess.run(self.value, {self.X: np.reshape(obs, [1, self.input_size])})
 
-    def train_model(self, obs, values, returns):
-        values, loss, _ = self.sess.run([self.value, self.loss, self.train], {self.X: obs, self.OLD_VALUES: values, self.RETURNS: returns})
+    def train_model(self, obs, values, returns, clipping, learning_rate):
+        values, loss, _ = self.sess.run(
+            [self.value, self.loss, self.train],
+            {
+                self.X: obs,
+                self.OLD_VALUES: values,
+                self.RETURNS: returns,
+                self.CLIPPING: clipping,
+                self.LEARNING_RATE: learning_rate,
+            }
+        )
+
         return loss

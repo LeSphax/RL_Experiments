@@ -26,9 +26,14 @@ env = MonitorEnv(env)
 SUMMARY_INTERVAL = 10
 BATCH_SIZE = 128
 NB_EPOCHS = 4
-NB_MINIBATCH = 4
+NB_MINIBATCH = 1
+CLIPPING = 0.1
+LEARNING_RATE = 0.00025
+TOTAL_TIMESTEPS = 100000
+TOTAL_BATCHES = TOTAL_TIMESTEPS // BATCH_SIZE
 
 name = datetime.now().strftime("%Y%m%d-%H%M%S")
+
 
 class EnvRunner(object):
     def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.99, gae_weighting=0.95):
@@ -130,7 +135,8 @@ def simulate():
     previous_summary_time = time.time()
     runner = EnvRunner(env, value_estimator, policy_estimator)
 
-    for t in range(200000 // BATCH_SIZE):
+    for t in range(TOTAL_BATCHES):
+        decay = t//TOTAL_BATCHES
         training_batch, epinfos = runner.run_timesteps(BATCH_SIZE)
         summary_batch['epinfos'].append(epinfos)
 
@@ -148,12 +154,16 @@ def simulate():
                     actions=training_batch['actions'][mb_inds],
                     neglogp_actions=training_batch['neglogp_actions'][mb_inds],
                     advantages=training_batch['advantages'][mb_inds],
+                    clipping=CLIPPING * (1-decay),
+                    learning_rate=LEARNING_RATE * (1-decay),
                 )
 
                 value_loss = value_estimator.train_model(
                     obs=training_batch['obs'][mb_inds],
                     values=training_batch['values'][mb_inds],
                     returns=training_batch['returns'][mb_inds],
+                    clipping=CLIPPING * (1-decay),
+                    learning_rate=LEARNING_RATE * (1-decay),
                 )
                 summary_batch['value_losses'].append(value_loss)
                 summary_batch['policy_losses'].append(policy_loss)
