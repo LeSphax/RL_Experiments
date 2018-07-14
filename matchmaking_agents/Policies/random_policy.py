@@ -5,4 +5,4 @@ import random
 class RandomPolicy(MatchmakingPolicy):
 
     def get_action(self,obs):
-        return (math.floor(random.random() * len(obs)), math.floor(random.random() *len(obs)))
+        return math.floor(random.random() * len(obs))
