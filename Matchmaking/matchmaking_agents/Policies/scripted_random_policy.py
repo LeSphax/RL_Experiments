@@ -1,12 +1,11 @@
 import numpy as np
 import math
-import matchmaking_agents.agents
-from matchmaking_agents.Policies.policy import MatchmakingPolicy
+from matchmaking_agents.Policies.policy import Policy
 import random
 import sys
 
 
-class ScriptedPolicy(MatchmakingPolicy):
+class ScriptedPolicy(Policy):
 
     def __init__(self, env):
         self.input_size = env.observation_space.shape[0]

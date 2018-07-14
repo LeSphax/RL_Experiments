@@ -1,11 +1,10 @@
 import math
-import matchmaking_agents.agents
-from matchmaking_agents.Policies.policy import MatchmakingPolicy
+from matchmaking_agents.Policies.policy import Policy
 import random
 import sys
 
 
-class ScriptedPolicy(MatchmakingPolicy):
+class ScriptedPolicy(Policy):
 
     def __init__(self, env, smart=True):
         self.input_size = env.action_space.n

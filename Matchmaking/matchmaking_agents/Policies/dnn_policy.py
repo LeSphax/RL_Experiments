@@ -1,6 +1,5 @@
 import math
-import matchmaking_agents.agents
-from matchmaking_agents.Policies.policy import MatchmakingPolicy
+from matchmaking_agents.Policies.policy import Policy
 import tensorflow as tf
 import numpy as np
 
@@ -21,7 +20,7 @@ class CategoricalPd(object):
         u = tf.random_uniform(tf.shape(self.logits))
         return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
 
-class DNNPolicy(MatchmakingPolicy):
+class DNNPolicy(Policy):
 
     def __init__(self, env, num_layers=1):
         self.input_size = env.observation_space.shape[0]
