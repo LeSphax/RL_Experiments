@@ -4,7 +4,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gym_matchmaking
 import matchmaking_agents
-from matchmaking_agents.Policies.Two_steps import scripted_policy, dnn_policy, random_policy, scripted_random_policy
+from matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy
 from matchmaking_agents.Values import random_value, dnn_value
 from wrappers.monitor_env import MonitorEnv
 from wrappers.auto_reset_env import AutoResetEnv
