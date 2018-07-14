@@ -10,12 +10,6 @@ class AutoResetEnv(Wrapper):
         if done:
             obs = self.reset()
         return obs, rew, done, info
-
+    
     def reset(self):
         return self.env.reset()
-
-    def close(self):
-        return
-
-    def render(self):
-        return self.env.render()

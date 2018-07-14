@@ -21,9 +21,3 @@ class MonitorEnv(Wrapper):
         self.steps = 0
         self.rewards = []
         return self.env.reset()
-
-    def close(self):
-        return
-
-    def render(self):
-        return self.env.render()

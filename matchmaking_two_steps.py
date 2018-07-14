@@ -8,6 +8,7 @@ from matchmaking_agents.Policies.Two_steps import scripted_policy, dnn_policy, r
 from matchmaking_agents.Values import random_value, dnn_value
 from wrappers.monitor_env import MonitorEnv
 from wrappers.auto_reset_env import AutoResetEnv
+from wrappers.normalize_env import NormalizeEnv
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
@@ -77,7 +78,7 @@ class EnvRunner(object):
 
         next_value = 0 if done else self.value_estimator.get_value(self.obs)
         batch['values'] = np.append(batch['values'], next_value)
-        last_discounted_advantage = 0
+        last_discounted_adv = 0
         for idx in reversed(range(nb_timesteps)):
             if batch['dones'][idx] == 1:
                 next_value = 0
@@ -87,7 +88,7 @@ class EnvRunner(object):
                 use_last_discounted_adv = 1
 
             td_error = self.discount_factor * next_value + batch['rewards'][idx] - batch['values'][idx]
-            advantages[idx] = last_discounted_advantage = td_error + self.discount_factor * self.gae_weighting * last_discounted_advantage * use_last_discounted_adv
+            advantages[idx] = last_discounted_adv = td_error + self.discount_factor * self.gae_weighting * last_discounted_adv * use_last_discounted_adv
         returns = advantages + batch['values'][:-1]
 
         batch['advantages'] = advantages
@@ -129,7 +130,7 @@ def simulate():
     previous_summary_time = time.time()
     runner = EnvRunner(env, value_estimator, policy_estimator)
 
-    for t in range(100000 // BATCH_SIZE):
+    for t in range(200000 // BATCH_SIZE):
         training_batch, epinfos = runner.run_timesteps(BATCH_SIZE)
         summary_batch['epinfos'].append(epinfos)
 
@@ -170,9 +171,6 @@ def simulate():
                 {
                     ENTROPY:  np.mean(summary_batch['entropies']),
                     FPS: BATCH_SIZE * SUMMARY_INTERVAL/time_between_summaries,
-                    # INCORRECT_ACTIONS: rewards[np.where(rewards == -0.1)].size,
-                    # HOLDS_NOT_EMPTY: holds_not_empty[holds_not_empty].size,
-                    # HOLDS: holds[holds].size,
                     VALUE_LOSS: np.mean(summary_batch['value_losses']),
                     POLICY_LOSS: np.mean(summary_batch['policy_losses']),
                     TOTAL_REWARD: np.mean(eprewards),
