@@ -16,6 +16,18 @@ from utils.gae import gae
 import utils.keyPoller as kp
 import random
 import time
+from docopt import docopt
+
+
+_USAGE = '''
+Usage:
+    my_ppo (<name>)
+
+'''
+options = docopt(_USAGE)
+
+name = str(options['<name>'])
+
 
 env = gym.make('CartPole-v1')
 seed = 1
@@ -32,8 +44,7 @@ LEARNING_RATE = 0.00025
 TOTAL_TIMESTEPS = 100000
 TOTAL_BATCHES = TOTAL_TIMESTEPS // BATCH_SIZE
 
-name = datetime.now().strftime("%Y%m%d-%H%M%S")
-
+date = datetime.now().strftime("%m%d-%H%M")
 
 class EnvRunner(object):
     def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.99, gae_weighting=0.95):
@@ -122,7 +133,7 @@ def simulate():
     merged = tf.summary.merge_all()
     global_step = tf.Variable(0, name="global_step", trainable=False)
     sess = tf.Session()
-    train_writer = tf.summary.FileWriter('./train/{name}'.format(name=name), sess.graph)
+    train_writer = tf.summary.FileWriter('./train/{name}_{date}'.format(name=name, date=date), sess.graph)
 
     training_batch = []
     summary_batch = {
