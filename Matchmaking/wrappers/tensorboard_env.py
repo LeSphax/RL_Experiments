@@ -5,13 +5,13 @@ import tensorflow as tf
 from datetime import datetime
 
 class TensorboardEnv(Wrapper):
-    def __init__(self, env, write=True):
+    def __init__(self, env, save_path, write=True):
         Wrapper.__init__(self, env=env)
         self.episode_rewards = []
         self.total_nb_steps = 0
         self.rewards = None
 
-        name = datetime.now().strftime("%Y%m%d-%H%M%S")
+        
 
         self.TOTAL_REWARD = tf.placeholder(tf.float32, ())
 
@@ -19,7 +19,7 @@ class TensorboardEnv(Wrapper):
 
         self.merged = tf.summary.merge_all()
         self.sess = tf.get_default_session()
-        self.train_writer = tf.summary.FileWriter('../../../Experiments/Matchmaking/train/{name}'.format(name=name), self.sess.graph)
+        self.train_writer = tf.summary.FileWriter(save_path, self.sess.graph)
 
 
     def step(self, action):

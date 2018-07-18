@@ -9,6 +9,7 @@ from matchmaking_agents.Values import random_value, dnn_value
 from wrappers.monitor_env import MonitorEnv
 from wrappers.auto_reset_env import AutoResetEnv
 from wrappers.normalize_env import NormalizeEnv
+from wrappers.tensorboard_env import TensorboardEnv
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
@@ -30,16 +31,12 @@ options = docopt(_USAGE)
 name = str(options['<name>'])
 
 
-env = gym.make('CartPole-v1')
-seed = 1
-env.seed(seed)
-random.seed(seed)
+SEED = 1
 
-env = MonitorEnv(env)
 SUMMARY_INTERVAL = 10
 BATCH_SIZE = 128
 NB_EPOCHS = 4
-NB_MINIBATCH = 1
+NB_MINIBATCH = 4
 CLIPPING = 0.1
 LEARNING_RATE = 0.00025
 TOTAL_TIMESTEPS = 100000
@@ -116,7 +113,6 @@ class EnvRunner(object):
 
 
 def simulate():
-
     ncpu = multiprocessing.cpu_count()
     if sys.platform == 'darwin':
         ncpu //= 2
@@ -127,23 +123,15 @@ def simulate():
     sess = tf.Session(config=config)
     sess.__enter__()
 
+    env = gym.make('CartPole-v1')
+    env.seed(SEED)
+    random.seed(SEED)
+
+    env = MonitorEnv(env)
+    env = TensorboardEnv(env, './train/{name}_{date}'.format(name=name, date=date))
+
     policy_estimator = dnn_policy.DNNPolicy(env, 2)
     value_estimator = dnn_value.DNNValue(env, 2)
-
-    ENTROPY = tf.placeholder(tf.float32, ())
-    FPS = tf.placeholder(tf.float32, ())
-    VALUE_LOSS = tf.placeholder(tf.float32, ())
-    POLICY_LOSS = tf.placeholder(tf.float32, ())
-    TOTAL_REWARD = tf.placeholder(tf.float32, ())
-
-    tf.summary.scalar('entropy', ENTROPY)
-    tf.summary.scalar('fps', FPS)
-    tf.summary.scalar('value_loss', VALUE_LOSS)
-    tf.summary.scalar('policy_loss', POLICY_LOSS)
-    tf.summary.scalar('total_reward', TOTAL_REWARD)
-
-    merged = tf.summary.merge_all()
-    train_writer = tf.summary.FileWriter('./train/{name}_{date}'.format(name=name, date=date), sess.graph)
 
     training_batch = []
     summary_batch = {
@@ -157,7 +145,8 @@ def simulate():
     runner = EnvRunner(env, value_estimator, policy_estimator)
 
     for t in range(TOTAL_BATCHES):
-        decay = t//TOTAL_BATCHES
+        decay = t/TOTAL_BATCHES
+
         training_batch, epinfos = runner.run_timesteps(BATCH_SIZE)
         summary_batch['epinfos'].append(epinfos)
 
@@ -197,16 +186,16 @@ def simulate():
 
             time_between_summaries = time.time() - previous_summary_time
             previous_summary_time = time.time()
-            summary = sess.run(
-                merged,
-                {
-                    ENTROPY:  np.mean(summary_batch['entropies']),
-                    FPS: BATCH_SIZE * SUMMARY_INTERVAL/time_between_summaries,
-                    VALUE_LOSS: np.mean(summary_batch['value_losses']),
-                    POLICY_LOSS: np.mean(summary_batch['policy_losses']),
-                    TOTAL_REWARD: np.mean(eprewards),
-                }
-            )
+            # summary = sess.run(
+            #     merged,
+            #     {
+            #         ENTROPY:  np.mean(summary_batch['entropies']),
+            #         FPS: BATCH_SIZE * SUMMARY_INTERVAL/time_between_summaries,
+            #         VALUE_LOSS: np.mean(summary_batch['value_losses']),
+            #         POLICY_LOSS: np.mean(summary_batch['policy_losses']),
+            #         TOTAL_REWARD: np.mean(eprewards),
+            #     }
+            # )
             summary_batch = {
                 'rewards': [],
                 'value_losses': [],
@@ -214,7 +203,7 @@ def simulate():
                 'entropies': [],
                 'epinfos': [],
             }
-            train_writer.add_summary(summary, t * BATCH_SIZE)
+            # train_writer.add_summary(summary, t * BATCH_SIZE)
 
 
 if __name__ == "__main__":
