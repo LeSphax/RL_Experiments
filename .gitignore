@@ -3,6 +3,7 @@ baselines/
 *.log
 reinforcement-learning/
 saves/
+venv/
 
 *.swp
 *.pyc

@@ -133,14 +133,13 @@ def simulate():
     policy_estimator = dnn_policy.DNNPolicy(env, 2)
     value_estimator = dnn_value.DNNValue(env, 2)
 
-    training_batch = []
     summary_batch = {
         'epinfos': [],
         'value_losses': [],
         'policy_losses': [],
         'entropies': []
     }
-    total_timesteps = 0
+
     previous_summary_time = time.time()
     runner = EnvRunner(env, value_estimator, policy_estimator)
 
