@@ -16,6 +16,7 @@ from utils.gae import gae
 import utils.keyPoller as kp
 import random
 import time
+import multiprocessing
 from docopt import docopt
 
 
@@ -49,6 +50,7 @@ date = datetime.now().strftime("%m%d-%H%M")
 class EnvRunner(object):
     def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.99, gae_weighting=0.95):
         self.env = AutoResetEnv(env)
+        self.env = NormalizeEnv(self.env)
         self.obs = self.env.reset()
         self.value_estimator = value_estimator
         self.policy_estimator = policy_estimator
@@ -115,6 +117,16 @@ class EnvRunner(object):
 
 def simulate():
 
+    ncpu = multiprocessing.cpu_count()
+    if sys.platform == 'darwin':
+        ncpu //= 2
+    config = tf.ConfigProto(allow_soft_placement=True,
+                            intra_op_parallelism_threads=ncpu,
+                            inter_op_parallelism_threads=ncpu)
+    config.gpu_options.allow_growth = True  # pylint: disable=E1101
+    sess = tf.Session(config=config)
+    sess.__enter__()
+
     policy_estimator = dnn_policy.DNNPolicy(env, 2)
     value_estimator = dnn_value.DNNValue(env, 2)
 
@@ -131,8 +143,6 @@ def simulate():
     tf.summary.scalar('total_reward', TOTAL_REWARD)
 
     merged = tf.summary.merge_all()
-    global_step = tf.Variable(0, name="global_step", trainable=False)
-    sess = tf.Session()
     train_writer = tf.summary.FileWriter('./train/{name}_{date}'.format(name=name, date=date), sess.graph)
 
     training_batch = []

@@ -110,10 +110,16 @@ class DNNPolicy(Policy):
         pg_losses = -self.ADVANTAGES * ratio
         pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - self.CLIPPING, 1.0 + self.CLIPPING)
         self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE)
-        self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
+       
+        with tf.variable_scope('policy'):
+            params = tf.trainable_variables()
+        grads = tf.gradients(self.loss, params)
+        grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
+        grads = list(zip(grads, params))
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
+        self._train = optimizer.apply_gradients(grads)
 
-        self.sess = tf.Session()
+        self.sess = tf.get_default_session()
         init = tf.global_variables_initializer()
         self.sess.run(init)
 
@@ -125,7 +131,7 @@ class DNNPolicy(Policy):
     def train_model(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         entropy, loss, _ = self.sess.run(
-            [self.entropy, self.loss, self.train],
+            [self.entropy, self.loss, self._train],
             {
                 self.X: obs,
                 self.ACTIONS: actions,

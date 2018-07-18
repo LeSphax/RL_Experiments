@@ -87,10 +87,16 @@ class DNNValue(MatchmakingValue):
         losses1 = tf.square(self.value - self.RETURNS)
         losses2 = tf.square(value_clipped - self.RETURNS)
         self.loss = .5 * tf.reduce_mean(tf.maximum(losses1, losses2))
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE)
-        self.train = optimizer.minimize(self.loss, global_step=tf.train.get_global_step())
 
-        self.sess = tf.Session()
+        with tf.variable_scope('value'):
+            params = tf.trainable_variables()
+        grads = tf.gradients(self.loss, params)
+        grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
+        grads = list(zip(grads, params))
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
+        self._train = optimizer.apply_gradients(grads)
+
+        self.sess = tf.get_default_session()
         init = tf.global_variables_initializer()
         self.sess.run(init)
 
@@ -100,7 +106,7 @@ class DNNValue(MatchmakingValue):
 
     def train_model(self, obs, values, returns, clipping, learning_rate):
         values, loss, _ = self.sess.run(
-            [self.value, self.loss, self.train],
+            [self.value, self.loss, self._train],
             {
                 self.X: obs,
                 self.OLD_VALUES: values,

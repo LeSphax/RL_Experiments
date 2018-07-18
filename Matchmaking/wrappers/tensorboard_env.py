@@ -18,7 +18,7 @@ class TensorboardEnv(Wrapper):
         tf.summary.scalar('total_reward', self.TOTAL_REWARD)
 
         self.merged = tf.summary.merge_all()
-        self.sess = tf.Session()
+        self.sess = tf.get_default_session()
         self.train_writer = tf.summary.FileWriter('../../../Experiments/Matchmaking/train/{name}'.format(name=name), self.sess.graph)
 
 
