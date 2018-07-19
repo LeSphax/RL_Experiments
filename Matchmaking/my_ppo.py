@@ -3,17 +3,12 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gym_matchmaking
-import matchmaking_agents
-from matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy
-from matchmaking_agents.Values import random_value, dnn_value
-from wrappers.monitor_env import MonitorEnv
-from wrappers.auto_reset_env import AutoResetEnv
-from wrappers.normalize_env import NormalizeEnv
-from wrappers.tensorboard_env import TensorboardEnv
+from Matchmaking.matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy
+from Matchmaking.matchmaking_agents.Values import random_value, dnn_value
+from Matchmaking.wrappers import AutoResetEnv, MonitorEnv, TensorboardMathmakingEnv, TensorboardEnv, NormalizeEnv
 import numpy as np
 import tensorflow as tf
 from datetime import datetime
-from utils.gae import gae
 import utils.keyPoller as kp
 import random
 import time
@@ -39,7 +34,7 @@ NB_EPOCHS = 4
 NB_MINIBATCH = 4
 CLIPPING = 0.1
 LEARNING_RATE = 0.00025
-TOTAL_TIMESTEPS = 100000
+TOTAL_TIMESTEPS = 1000000
 TOTAL_BATCHES = TOTAL_TIMESTEPS // BATCH_SIZE
 
 date = datetime.now().strftime("%m%d-%H%M")
@@ -123,15 +118,16 @@ def simulate():
     sess = tf.Session(config=config)
     sess.__enter__()
 
-    env = gym.make('CartPole-v1')
+    env = gym.make('Matchmaking-v1')
     env.seed(SEED)
     random.seed(SEED)
 
     env = MonitorEnv(env)
-    env = TensorboardEnv(env, './train/{name}_{date}'.format(name=name, date=date))
+    env = TensorboardMathmakingEnv(env, './train/Matchmaking/{name}_{date}'.format(name=name, date=date))
 
-    policy_estimator = dnn_policy.DNNPolicy(env, 2)
-    value_estimator = dnn_value.DNNValue(env, 2)
+    policy_estimator = dnn_policy.DNNPolicy(env, 2, 0)
+    # policy_estimator = scripted_policy.ScriptedPolicy(env)
+    value_estimator = dnn_value.DNNValue(env, 2, 0)
 
     summary_batch = {
         'epinfos': [],
@@ -185,16 +181,6 @@ def simulate():
 
             time_between_summaries = time.time() - previous_summary_time
             previous_summary_time = time.time()
-            # summary = sess.run(
-            #     merged,
-            #     {
-            #         ENTROPY:  np.mean(summary_batch['entropies']),
-            #         FPS: BATCH_SIZE * SUMMARY_INTERVAL/time_between_summaries,
-            #         VALUE_LOSS: np.mean(summary_batch['value_losses']),
-            #         POLICY_LOSS: np.mean(summary_batch['policy_losses']),
-            #         TOTAL_REWARD: np.mean(eprewards),
-            #     }
-            # )
             summary_batch = {
                 'rewards': [],
                 'value_losses': [],

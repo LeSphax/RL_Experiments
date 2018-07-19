@@ -1,4 +1,5 @@
-from matchmaking_agents.Policies.policy import Policy
+from Matchmaking.matchmaking_agents.Policies.policy import Policy
+from Matchmaking.matchmaking_agents.model import create_model
 import tensorflow as tf
 import numpy as np
 
@@ -24,36 +25,23 @@ class CategoricalPd(object):
 
 class DNNPolicy(Policy):
 
-    def __init__(self, env, num_layers=1):
+    def __init__(self, env, num_layers, num_conv_layers):
         self.input_size = env.observation_space.shape[0]
         self.output_size = env.action_space.n
-        self.create_model(env, num_layers)
 
-    def create_model(self, env, num_layers):
-        with tf.variable_scope("policy", reuse=False):
-            self.X = tf.placeholder(shape=[None, self.input_size], dtype=env.observation_space.dtype, name="X")
+        self.X, previous_layer = create_model("policy", self.input_size, num_layers, num_conv_layers)
 
-            previous_layer = self.X
-            for idx in range(num_layers):
-                hidden_layer = tf.contrib.layers.fully_connected(
-                    inputs=previous_layer,
-                    num_outputs=64,
-                    activation_fn=tf.nn.tanh,
-                    weights_initializer=tf.orthogonal_initializer(np.sqrt(2))
-                )
-                previous_layer = hidden_layer
+        self.output_layer = tf.contrib.layers.fully_connected(
+            inputs=previous_layer,
+            num_outputs=self.output_size,
+            activation_fn=None,
+            weights_initializer=tf.constant_initializer(0.01)
+        )
 
-            self.output_layer = tf.contrib.layers.fully_connected(
-                inputs=previous_layer,
-                num_outputs=self.output_size,
-                activation_fn=None,
-                weights_initializer=tf.constant_initializer(0.01)
-            )
+        self.probability_distribution = CategoricalPd(self.output_layer)
 
-            self.probability_distribution = CategoricalPd(self.output_layer)
-
-            self.action = self.probability_distribution.sample()
-            self.neglogp_action = self.probability_distribution.neglogp(self.action)
+        self.action = self.probability_distribution.sample()
+        self.neglogp_action = self.probability_distribution.neglogp(self.action)
 
         self.ADVANTAGES = tf.placeholder(tf.float32, [None])
         self.ACTIONS = tf.placeholder(tf.int32, [None])

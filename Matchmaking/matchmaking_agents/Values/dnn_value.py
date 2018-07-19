@@ -1,34 +1,22 @@
-from matchmaking_agents.Values.value import MatchmakingValue
+from Matchmaking.matchmaking_agents.Values.value import MatchmakingValue
 import tensorflow as tf
 import numpy as np
+from Matchmaking.matchmaking_agents.model import create_model
 
 
 class DNNValue(MatchmakingValue):
 
-    def __init__(self, env, num_layers=1):
+    def __init__(self, env, num_layers, num_conv_layers):
         self.input_size = env.observation_space.shape[0]
-        self.create_model(env, num_layers)
 
-    def create_model(self, env, num_layers):
-        with tf.variable_scope("value", reuse=False):
-            self.X = tf.placeholder(shape=[None, self.input_size], dtype=env.observation_space.dtype, name="X")
+        self.X, previous_layer = create_model("value", self.input_size, num_layers, num_conv_layers)
 
-            previous_layer = self.X
-            for idx in range(num_layers):
-                hidden_layer = tf.contrib.layers.fully_connected(
-                    inputs=previous_layer,
-                    num_outputs=64,
-                    activation_fn=tf.nn.tanh,
-                    weights_initializer=tf.orthogonal_initializer(np.sqrt(2))
-                )
-                previous_layer = hidden_layer
-
-            self.value = tf.contrib.layers.fully_connected(
-                    inputs=previous_layer,
-                    num_outputs=1,
-                    activation_fn=None,
-                    weights_initializer=tf.constant_initializer(1)
-                )[:,0]
+        self.value = tf.contrib.layers.fully_connected(
+                inputs=previous_layer,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.constant_initializer(1)
+            )[:,0]
 
 
         self.OLD_VALUES = tf.placeholder(tf.float32, [None])

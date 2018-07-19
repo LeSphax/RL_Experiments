@@ -19,7 +19,8 @@ class ScriptedPolicy(Policy):
         obs = list(filter(lambda a: a != -1, obs[1:]))
         # Wait until the queue is full
         if len(obs) < 1:
-            return self.input_size-1
+            print("Wait ", self.input_size-1)
+            return self.input_size-1, 0
         else:
             if room != -1:
                 minimum_diff = sys.maxsize
@@ -29,14 +30,16 @@ class ScriptedPolicy(Policy):
                     if minimum_diff > diff:
                         minimum_diff = diff
                         idx_min = idx
-                return idx_min
+                print ("take min ", idx_min)
+                return idx_min, 0
             else:
-                return 0
+                print("Take first ", 0)
+                return 0, 0
 
     def not_so_smart(self, obs):
         obs = list(filter(lambda a: a != -1, obs))
         # Wait until the queue is full
         if len(obs) < 1:
-            return self.input_size-1
+            return self.input_size-1, 0
         else:
-            return 0
+            return 0, 0
