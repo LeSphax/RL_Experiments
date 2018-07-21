@@ -43,3 +43,6 @@ class ScriptedPolicy(Policy):
             return self.input_size-1, 0
         else:
             return 0, 0
+
+    def normalize(self):
+        return False

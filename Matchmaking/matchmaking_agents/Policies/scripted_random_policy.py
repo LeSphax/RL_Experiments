@@ -24,3 +24,6 @@ class ScriptedPolicy(Policy):
         index2 = np.random.choice(indexes)
 
         return (index1, index2)
+
+    def normalize(self):
+        return False

@@ -9,3 +9,6 @@ class Policy(object):
 
     def train_model(self, *args, **kwargs):
         return 0, 0
+
+    def normalize(self):
+        return True
