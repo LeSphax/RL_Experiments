@@ -45,10 +45,10 @@ class MatchmakingEnv1(gym.Env):
                 player2 = self.pop_player(action)
 
                 self.history.insert(0, [player1, player2])
-                if(len(self.history) > self.max_history_size):
+                if len(self.history) > self.max_history_size:
                     self.history = self.history[:-1]
 
-                reward = 1 - (pow((player1 - player2), 2) * 2)
+                reward = 1 - (pow((player1 - player2), 2) * 5)
                
                 self.room = -1
         elif action == self.state_size:
@@ -57,7 +57,13 @@ class MatchmakingEnv1(gym.Env):
             reward = -0.1
             self.error_last_step = True
 
-        return self.get_return_state(), reward, self.timestep == 20, {}
+        if random.random() > 0.9 and len(self.state) < self.state_size:
+            new = random.random()
+            self.state = np.append(self.state, new)
+            self.state.sort()
+            self.refresh_padding()
+
+        return self.get_return_state(), reward, False, {}
 
     def reset(self):
         self.timestep = 0
