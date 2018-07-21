@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
 import gym
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gym_matchmaking
-from Matchmaking.matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy
+from Matchmaking.matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy, \
+    scripted_policy_live
 from Matchmaking.matchmaking_agents.Values import random_value, dnn_value
 from Matchmaking.wrappers import AutoResetEnv, MonitorEnv, TensorboardMathmakingEnv, TensorboardEnv, NormalizeEnv
 import numpy as np
@@ -15,7 +18,6 @@ import time
 import multiprocessing
 from docopt import docopt
 
-
 _USAGE = '''
 Usage:
     my_ppo (<name>)
@@ -24,7 +26,6 @@ Usage:
 options = docopt(_USAGE)
 
 name = str(options['<name>'])
-
 
 SEED = 1
 
@@ -39,10 +40,12 @@ TOTAL_BATCHES = TOTAL_TIMESTEPS // BATCH_SIZE
 
 date = datetime.now().strftime("%m%d-%H%M")
 
+
 class EnvRunner(object):
-    def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.99, gae_weighting=0.95):
-        self.env = AutoResetEnv(env)
-        self.env = NormalizeEnv(self.env)
+    def __init__(self, env, value_estimator, policy_estimator, discount_factor=0.9999, gae_weighting=0.95):
+        self.env = AutoResetEnv(env, 300)
+        if policy_estimator.normalize():
+            self.env = NormalizeEnv(self.env)
         self.obs = self.env.reset()
         self.value_estimator = value_estimator
         self.policy_estimator = policy_estimator
@@ -83,7 +86,6 @@ class EnvRunner(object):
             if maybeepinfo:
                 epinfos.append(maybeepinfo)
 
-        returns = np.zeros_like(batch['rewards'], dtype=float)
         advantages = np.zeros_like(batch['rewards'], dtype=float)
 
         next_value = 0 if done else self.value_estimator.get_value(self.obs)
@@ -94,11 +96,12 @@ class EnvRunner(object):
                 next_value = 0
                 use_last_discounted_adv = 0
             else:
-                next_value = batch['values'][idx+1]
+                next_value = batch['values'][idx + 1]
                 use_last_discounted_adv = 1
 
             td_error = self.discount_factor * next_value + batch['rewards'][idx] - batch['values'][idx]
-            advantages[idx] = last_discounted_adv = td_error + self.discount_factor * self.gae_weighting * last_discounted_adv * use_last_discounted_adv
+            advantages[
+                idx] = last_discounted_adv = td_error + self.discount_factor * self.gae_weighting * last_discounted_adv * use_last_discounted_adv
         returns = advantages + batch['values'][:-1]
 
         batch['advantages'] = advantages
@@ -118,38 +121,34 @@ def simulate():
     sess = tf.Session(config=config)
     sess.__enter__()
 
-    env = gym.make('Matchmaking-v1')
+    env_name = 'Breakout-v0'
+    env = gym.make(env_name)
+
     env.seed(SEED)
     random.seed(SEED)
 
     env = MonitorEnv(env)
-    env = TensorboardMathmakingEnv(env, './train/Matchmaking/{name}_{date}'.format(name=name, date=date))
+    env = TensorboardEnv(env, './train/{env_name}/{name}_{date}'.format(env_name=env_name, name=name, date=date))
 
-    policy_estimator = dnn_policy.DNNPolicy(env, 2, 0)
-    # policy_estimator = scripted_policy.ScriptedPolicy(env)
-    value_estimator = dnn_value.DNNValue(env, 2, 0)
+    policy_estimator = dnn_policy.DNNPolicy(env, 1, 1)
+    # policy_estimator = scripted_policy_live.ScriptedPolicy(env)
+    value_estimator = dnn_value.DNNValue(env, 1, 1)
 
-    summary_batch = {
-        'epinfos': [],
-        'value_losses': [],
-        'policy_losses': [],
-        'entropies': []
-    }
-
-    previous_summary_time = time.time()
     runner = EnvRunner(env, value_estimator, policy_estimator)
 
     for t in range(TOTAL_BATCHES):
-        decay = t/TOTAL_BATCHES
+        decay = t / TOTAL_BATCHES
 
+        start_time = time.time()
         training_batch, epinfos = runner.run_timesteps(BATCH_SIZE)
-        summary_batch['epinfos'].append(epinfos)
+        print("Gather batch", time.time() - start_time)
 
+        start_time = time.time()
         inds = np.arange(BATCH_SIZE)
         for _ in range(NB_EPOCHS):
 
             np.random.shuffle(inds)
-            minibatch_size = BATCH_SIZE//NB_MINIBATCH
+            minibatch_size = BATCH_SIZE // NB_MINIBATCH
             for start in range(0, BATCH_SIZE, minibatch_size):
                 end = start + minibatch_size
                 mb_inds = inds[start:end]
@@ -159,36 +158,18 @@ def simulate():
                     actions=training_batch['actions'][mb_inds],
                     neglogp_actions=training_batch['neglogp_actions'][mb_inds],
                     advantages=training_batch['advantages'][mb_inds],
-                    clipping=CLIPPING * (1-decay),
-                    learning_rate=LEARNING_RATE * (1-decay),
+                    clipping=CLIPPING * (1 - decay),
+                    learning_rate=LEARNING_RATE * (1 - decay),
                 )
 
                 value_loss = value_estimator.train_model(
                     obs=training_batch['obs'][mb_inds],
                     values=training_batch['values'][mb_inds],
                     returns=training_batch['returns'][mb_inds],
-                    clipping=CLIPPING * (1-decay),
-                    learning_rate=LEARNING_RATE * (1-decay),
+                    clipping=CLIPPING * (1 - decay),
+                    learning_rate=LEARNING_RATE * (1 - decay),
                 )
-                summary_batch['value_losses'].append(value_loss)
-                summary_batch['policy_losses'].append(policy_loss)
-                summary_batch['entropies'].append(entropy)
-
-        if t % SUMMARY_INTERVAL == 0 and t != 0:
-            epinfos = np.concatenate([np.array(list) for list in summary_batch['epinfos']])
-            eprewards = [epinfo['total_reward'] for epinfo in epinfos]
-            epnb_steps = [epinfo['nb_steps'] for epinfo in epinfos]
-
-            time_between_summaries = time.time() - previous_summary_time
-            previous_summary_time = time.time()
-            summary_batch = {
-                'rewards': [],
-                'value_losses': [],
-                'policy_losses': [],
-                'entropies': [],
-                'epinfos': [],
-            }
-            # train_writer.add_summary(summary, t * BATCH_SIZE)
+        print("Train model", time.time() - start_time)
 
 
 if __name__ == "__main__":

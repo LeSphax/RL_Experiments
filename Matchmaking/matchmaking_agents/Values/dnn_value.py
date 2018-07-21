@@ -1,15 +1,15 @@
 from Matchmaking.matchmaking_agents.Values.value import MatchmakingValue
 import tensorflow as tf
 import numpy as np
-from Matchmaking.matchmaking_agents.model import create_model
+from Matchmaking.matchmaking_agents.models import create_model, create_atari_model
 
 
 class DNNValue(MatchmakingValue):
 
     def __init__(self, env, num_layers, num_conv_layers):
-        self.input_size = env.observation_space.shape[0]
+        self.input_shape = env.observation_space.shape
 
-        self.X, previous_layer = create_model("value", self.input_size, num_layers, num_conv_layers)
+        self.X, previous_layer = create_atari_model("value", self.input_shape, num_layers, num_conv_layers)
 
         self.value = tf.contrib.layers.fully_connected(
                 inputs=previous_layer,
@@ -43,7 +43,7 @@ class DNNValue(MatchmakingValue):
 
     def get_value(self, obs):
         # print(obs)
-        return self.sess.run(self.value, {self.X: np.reshape(obs, [1, self.input_size])})
+        return self.sess.run(self.value, {self.X: np.reshape(obs, (1,) + self.input_shape)})
 
     def train_model(self, obs, values, returns, clipping, learning_rate):
         values, loss, _ = self.sess.run(

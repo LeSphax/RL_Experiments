@@ -1,5 +1,5 @@
 from Matchmaking.matchmaking_agents.Policies.policy import Policy
-from Matchmaking.matchmaking_agents.model import create_model
+from Matchmaking.matchmaking_agents.models import create_model, create_atari_model
 import tensorflow as tf
 import numpy as np
 
@@ -26,10 +26,10 @@ class CategoricalPd(object):
 class DNNPolicy(Policy):
 
     def __init__(self, env, num_layers, num_conv_layers):
-        self.input_size = env.observation_space.shape[0]
+        self.input_shape = env.observation_space.shape
         self.output_size = env.action_space.n
 
-        self.X, previous_layer = create_model("policy", self.input_size, num_layers, num_conv_layers)
+        self.X, previous_layer = create_atari_model("policy", self.input_shape, num_layers, num_conv_layers)
 
         self.output_layer = tf.contrib.layers.fully_connected(
             inputs=previous_layer,
@@ -72,7 +72,7 @@ class DNNPolicy(Policy):
 
     def get_action(self, obs):
         action, neglogp_action = self.sess.run([self.action, self.neglogp_action],
-                                               {self.X: np.reshape(obs, [1, self.input_size])})
+                                               {self.X: np.reshape(obs, (1,) + self.input_shape)})
 
         return action[0], neglogp_action[0]
 
