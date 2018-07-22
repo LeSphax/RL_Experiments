@@ -1,45 +1,45 @@
 from Matchmaking.matchmaking_agents.Values.value import MatchmakingValue
 import tensorflow as tf
 import numpy as np
-from Matchmaking.matchmaking_agents.models import create_model, create_atari_model
 
 
 class DNNValue(MatchmakingValue):
 
-    def __init__(self, env, num_layers, num_conv_layers):
+    def __init__(self, model_function, env, num_layers, num_conv_layers, reuse=False):
         self.input_shape = env.observation_space.shape
+        name = 'value'
 
-        self.X, previous_layer = create_atari_model("value", self.input_shape, num_layers, num_conv_layers)
+        self.X, previous_layer = model_function(name, self.input_shape, num_layers, num_conv_layers, reuse)
 
-        self.value = tf.contrib.layers.fully_connected(
-                inputs=previous_layer,
-                num_outputs=1,
-                activation_fn=None,
-                weights_initializer=tf.constant_initializer(1)
-            )[:,0]
+        with tf.variable_scope(name+'/training', reuse=reuse):
+            self.value = tf.contrib.layers.fully_connected(
+                    inputs=previous_layer,
+                    num_outputs=1,
+                    activation_fn=None,
+                    weights_initializer=tf.constant_initializer(1)
+                )[:,0]
 
 
-        self.OLD_VALUES = tf.placeholder(tf.float32, [None])
-        self.RETURNS = tf.placeholder(tf.float32, [None])
-        self.LEARNING_RATE = tf.placeholder(tf.float32, ())
-        self.CLIPPING = tf.placeholder(tf.float32, ())
+            self.OLD_VALUES = tf.placeholder(tf.float32, [None])
+            self.RETURNS = tf.placeholder(tf.float32, [None])
+            self.LEARNING_RATE = tf.placeholder(tf.float32, ())
+            self.CLIPPING = tf.placeholder(tf.float32, ())
 
-        value_clipped = self.OLD_VALUES + tf.clip_by_value(self.value - self.OLD_VALUES, -self.CLIPPING,  self.CLIPPING)
-        losses1 = tf.square(self.value - self.RETURNS)
-        losses2 = tf.square(value_clipped - self.RETURNS)
-        self.loss = .5 * tf.reduce_mean(tf.maximum(losses1, losses2))
+            value_clipped = self.OLD_VALUES + tf.clip_by_value(self.value - self.OLD_VALUES, -self.CLIPPING,  self.CLIPPING)
+            losses1 = tf.square(self.value - self.RETURNS)
+            losses2 = tf.square(value_clipped - self.RETURNS)
+            self.loss = .5 * tf.reduce_mean(tf.maximum(losses1, losses2))
 
-        with tf.variable_scope('value'):
             params = tf.trainable_variables()
-        grads = tf.gradients(self.loss, params)
-        grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
-        grads = list(zip(grads, params))
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
-        self._train = optimizer.apply_gradients(grads)
+            grads = tf.gradients(self.loss, params)
+            grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
+            grads = list(zip(grads, params))
+            optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
+            self._train = optimizer.apply_gradients(grads)
 
-        self.sess = tf.get_default_session()
-        init = tf.global_variables_initializer()
-        self.sess.run(init)
+            self.sess = tf.get_default_session()
+            init = tf.global_variables_initializer()
+            self.sess.run(init)
 
     def get_value(self, obs):
         # print(obs)

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 
-def create_model(name, input_shape, num_layers, num_conv_layers):
+def create_model(name, input_shape, num_layers, num_conv_layers, reuse=False):
     input_size = input_shape[0]
     with tf.variable_scope(name, reuse=False):
         X = tf.placeholder(shape=[None, input_size], dtype=np.float32, name="X")
@@ -28,9 +28,9 @@ def create_model(name, input_shape, num_layers, num_conv_layers):
         return X, previous_layer
 
 
-def create_atari_model(name, input_shape, num_layers, num_conv_layers):
+def create_atari_model(name, input_shape, num_layers, num_conv_layers, reuse=False):
     nb_filters = 1
-    with tf.variable_scope(name, reuse=False):
+    with tf.variable_scope(name, reuse=reuse):
         X = tf.placeholder(shape=(None,) + input_shape, dtype=np.float32, name="X")
 
         previous_layer = tf.reshape(X, (-1,) + input_shape)

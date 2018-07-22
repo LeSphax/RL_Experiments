@@ -25,50 +25,56 @@ class CategoricalPd(object):
 
 class DNNPolicy(Policy):
 
-    def __init__(self, env, num_layers, num_conv_layers):
+    def __init__(self, model_function, env, num_layers, num_conv_layers, reuse=False):
         self.input_shape = env.observation_space.shape
         self.output_size = env.action_space.n
+        name = 'policy'
 
-        self.X, previous_layer = create_atari_model("policy", self.input_shape, num_layers, num_conv_layers)
+        self.X, previous_layer = model_function(name, self.input_shape, num_layers, num_conv_layers, reuse)
 
-        self.output_layer = tf.contrib.layers.fully_connected(
-            inputs=previous_layer,
-            num_outputs=self.output_size,
-            activation_fn=None,
-            weights_initializer=tf.constant_initializer(0.01)
-        )
+        with tf.variable_scope(name+'/training', reuse=reuse):
+            print("Define policy")
+            self.output_layer = tf.contrib.layers.fully_connected(
+                inputs=previous_layer,
+                num_outputs=self.output_size,
+                activation_fn=None,
+                weights_initializer=tf.constant_initializer(0.01)
+            )
 
-        self.probability_distribution = CategoricalPd(self.output_layer)
+            self.probability_distribution = CategoricalPd(self.output_layer)
 
-        self.action = self.probability_distribution.sample()
-        self.neglogp_action = self.probability_distribution.neglogp(self.action)
+            self.action = self.probability_distribution.sample()
+            self.neglogp_action = self.probability_distribution.neglogp(self.action)
 
-        self.ADVANTAGES = tf.placeholder(tf.float32, [None])
-        self.ACTIONS = tf.placeholder(tf.int32, [None])
-        self.OLDNEGLOGP_ACTIONS = tf.placeholder(tf.float32, [None])
-        self.LEARNING_RATE = tf.placeholder(tf.float32, ())
-        self.CLIPPING = tf.placeholder(tf.float32, ())
+            self.ADVANTAGES = tf.placeholder(tf.float32, [None])
+            self.ACTIONS = tf.placeholder(tf.int32, [None])
+            self.OLDNEGLOGP_ACTIONS = tf.placeholder(tf.float32, [None])
+            self.LEARNING_RATE = tf.placeholder(tf.float32, ())
+            self.CLIPPING = tf.placeholder(tf.float32, ())
 
-        self.new_neglogp_action = self.probability_distribution.neglogp(self.ACTIONS)
+            self.new_neglogp_action = self.probability_distribution.neglogp(self.ACTIONS)
 
-        self.entropy = tf.reduce_mean(self.probability_distribution.entropy())
+            self.entropy = tf.reduce_mean(self.probability_distribution.entropy())
 
-        ratio = tf.exp(self.OLDNEGLOGP_ACTIONS - self.new_neglogp_action)
-        pg_losses = -self.ADVANTAGES * ratio
-        pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - self.CLIPPING, 1.0 + self.CLIPPING)
-        self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
+            ratio = tf.exp(self.OLDNEGLOGP_ACTIONS - self.new_neglogp_action)
+            pg_losses = -self.ADVANTAGES * ratio
+            pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - self.CLIPPING, 1.0 + self.CLIPPING)
+            self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
 
-        with tf.variable_scope('policy'):
             params = tf.trainable_variables()
-        grads = tf.gradients(self.loss, params)
-        grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
-        grads = list(zip(grads, params))
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
-        self._train = optimizer.apply_gradients(grads)
+            grads = tf.gradients(self.loss, params)
+            grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
+            grads = list(zip(grads, params))
+            optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
+            self._train = optimizer.apply_gradients(grads)
 
-        self.sess = tf.get_default_session()
-        init = tf.global_variables_initializer()
-        self.sess.run(init)
+            print("Get default session")
+            self.sess = tf.get_default_session()
+            print("Init variables")
+            init = tf.global_variables_initializer()
+            self.sess.run(init)
+            print("Finish")
+
 
     def get_action(self, obs):
         action, neglogp_action = self.sess.run([self.action, self.neglogp_action],
