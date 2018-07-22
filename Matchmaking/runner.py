@@ -7,13 +7,13 @@ import time
 
 
 class EnvRunner(object):
-    def __init__(self, make_session, make_env, policy_estimator, value_estimator, discount_factor=0.9999, gae_weighting=0.95):
-        self.sess = make_session()
-        self.env = make_env()
+    def __init__(self, session, env, policy_estimator, value_estimator, discount_factor=0.9999, gae_weighting=0.95):
+        self.sess = session
+        self.env = env
         self.policy_estimator = policy_estimator
         self.value_estimator = value_estimator
 
-        self.env = AutoResetEnv(self.env, 300)
+        self.env = AutoResetEnv(self.env, 500)
         if self.policy_estimator.normalize():
             self.env = NormalizeEnv(self.env)
         self.obs = self.env.reset()
@@ -90,13 +90,15 @@ class EnvRunnerProcess(Process):
 
     def run(self):
         import tensorflow as tf
-        print(tf.get_default_session())
-        policy_estimator, value_estimator = self.make_model()
-        runner = EnvRunner(self.make_session, self.make_env, policy_estimator, value_estimator)
+        sess = self.make_session()
+        env = self.make_env()
+        policy_estimator, value_estimator = self.make_model(env)
+        runner = EnvRunner(sess, env, policy_estimator, value_estimator)
         while True:
             decay = self.new_policies_queue.get()
-            training_batch = runner.run_timesteps(self.parameters.batch_size)
-            self.result_queue.put(training_batch)
+            print(decay)
+            training_batch, epinfos = runner.run_timesteps(self.parameters.batch_size)
+            self.result_queue.put((training_batch, epinfos))
 
             start_time = time.time()
             inds = np.arange(self.parameters.batch_size)

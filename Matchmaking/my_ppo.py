@@ -74,9 +74,9 @@ def simulate():
         return env
 
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(create_model, env, 1, 1)
+        policy = dnn_policy.DNNPolicy(create_model, env, 2, 0)
         # policy_estimator = scripted_policy_live.ScriptedPolicy(env)
-        value = dnn_value.DNNValue(create_model, env, 1, 1)
+        value = dnn_value.DNNValue(create_model, env, 2, 0)
         return policy, value
 
     runner = EnvRunnerProcess(make_session, make_env, make_model, parameters, results, new_policies)
