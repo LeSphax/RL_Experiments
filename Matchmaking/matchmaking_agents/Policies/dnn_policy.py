@@ -33,7 +33,6 @@ class DNNPolicy(Policy):
         self.X, previous_layer = model_function(name, self.input_shape, num_layers, num_conv_layers, reuse)
 
         with tf.variable_scope(name+'/training', reuse=reuse):
-            print("Define policy")
             self.output_layer = tf.contrib.layers.fully_connected(
                 inputs=previous_layer,
                 num_outputs=self.output_size,
@@ -61,19 +60,23 @@ class DNNPolicy(Policy):
             pg_losses2 = -self.ADVANTAGES * tf.clip_by_value(ratio, 1.0 - self.CLIPPING, 1.0 + self.CLIPPING)
             self.loss = tf.reduce_mean(tf.maximum(pg_losses, pg_losses2)) - self.entropy * 0.01
 
-            params = tf.trainable_variables()
-            grads = tf.gradients(self.loss, params)
+            self.params = tf.trainable_variables()
+            grads = tf.gradients(self.loss, self.params)
             grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
-            grads = list(zip(grads, params))
-            optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
-            self._train = optimizer.apply_gradients(grads)
+            self.grads_and_vars = list(zip(grads, self.params))
+            self.grads_and_vars = [(grad, var) for (grad, var) in self.grads_and_vars if grad is not None]
+            self.gradients = [grad for (grad, var) in self.grads_and_vars]
 
-            print("Get default session")
+            self.placeholder_gradients = []
+            for grad_var in self.grads_and_vars:
+                self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var[1].get_shape(), name="gradient_placeholder"), grad_var[1]))
+
+            optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
+            self._train = optimizer.apply_gradients(self.placeholder_gradients)
+
             self.sess = tf.get_default_session()
-            print("Init variables")
             init = tf.global_variables_initializer()
             self.sess.run(init)
-            print("Finish")
 
 
     def get_action(self, obs):
@@ -82,10 +85,10 @@ class DNNPolicy(Policy):
 
         return action[0], neglogp_action[0]
 
-    def train_model(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
+    def get_gradients(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        entropy, loss, _ = self.sess.run(
-            [self.entropy, self.loss, self._train],
+        entropy, loss, gradients = self.sess.run(
+            [self.entropy, self.loss, self.gradients],
             {
                 self.X: obs,
                 self.ACTIONS: actions,
@@ -95,4 +98,21 @@ class DNNPolicy(Policy):
                 self.LEARNING_RATE: learning_rate,
             }
         )
-        return entropy, loss
+        return entropy, loss, gradients
+
+    def apply_gradients(self, gradients, learning_rate):
+        feed_dict = {
+            self.LEARNING_RATE: learning_rate,
+        }
+        for i, _ in enumerate(self.grads_and_vars):
+            feed_dict[self.placeholder_gradients[i][0]] = gradients[i]
+        self._train.run(feed_dict=feed_dict)
+
+    def get_weights(self):
+        values = tf.get_default_session().run(tf.global_variables())
+        return values
+
+    def set_weights(self, weights):
+        for i, value in enumerate(weights):
+            value = np.asarray(value)
+            tf.global_variables()[i].load(value, self.sess)
