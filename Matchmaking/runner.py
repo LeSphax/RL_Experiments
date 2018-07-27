@@ -97,18 +97,21 @@ class EnvRunnerProcess(Process):
 
         runner = EnvRunner(sess, env, policy_estimator, value_estimator)
         while True:
+            print("Wait for weights")
+            start_time = time.time()
             decay, policy_weights, value_weights = self.new_policies_queue.get()
+            print("Got weights", time.time() - start_time)
             start_time = time.time()
             policy_estimator.set_weights(policy_weights)
             value_estimator.set_weights(value_weights)
-            # print("Set weights", time.time() - start_time)
+            print("Set weights", time.time() - start_time)
 
             learning_rate = self.parameters.learning_rate * (1 - decay)
             clipping = self.parameters.clipping * (1 - decay)
 
             start_time = time.time()
             training_batch, epinfos = runner.run_timesteps(self.parameters.batch_size)
-            # print("Run batch", time.time() - start_time)
+            print("Run batch", time.time() - start_time)
 
             start_time = time.time()
             value_gradients = []
@@ -143,7 +146,7 @@ class EnvRunnerProcess(Process):
                     value_estimator.apply_gradients(value_gradient_step, learning_rate)
                     value_gradients.append(value_gradient_step)
 
-            # print("Train model", time.time() - start_time)
+            print("Train model", time.time() - start_time)
 
             policy_gradients = np.sum(policy_gradients, axis=0)
             value_gradients = np.sum(value_gradients, axis=0)

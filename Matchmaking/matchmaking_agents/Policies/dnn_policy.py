@@ -25,12 +25,12 @@ class CategoricalPd(object):
 
 class DNNPolicy(Policy):
 
-    def __init__(self, model_function, env, num_layers, num_conv_layers, reuse=False):
+    def __init__(self, model_function, env, num_layers, reuse=False):
         self.input_shape = env.observation_space.shape
         self.output_size = env.action_space.n
         name = 'policy'
 
-        self.X, previous_layer = model_function(name, self.input_shape, num_layers, num_conv_layers, reuse)
+        self.X, previous_layer = model_function(name, self.input_shape, num_layers, reuse)
 
         with tf.variable_scope(name+'/training', reuse=reuse):
             self.output_layer = tf.contrib.layers.fully_connected(

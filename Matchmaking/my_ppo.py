@@ -6,7 +6,6 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import gym_matchmaking
 
 from Matchmaking.runner import EnvRunner, EnvRunnerProcess
 from Matchmaking.matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy, \
@@ -86,9 +85,9 @@ def simulate():
         return env
 
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(create_atari_model, env, 1,1)
+        policy = dnn_policy.DNNPolicy(create_atari_model, env, 1)
         # policy_estimator = scripted_policy_live.ScriptedPolicy(env)
-        value = dnn_value.DNNValue(create_atari_model, env, 1, 1)
+        value = dnn_value.DNNValue(create_atari_model, env, 1)
         return policy, value
 
     for i in range(nb_workers):
@@ -142,7 +141,7 @@ def simulate():
 
         for i in range(nb_workers):
             new_policy_queues[i].put((decay, policy_weights, value_weights))
-        # print("Get and write weights", time.time() - start_time)
+        print("Get and write weights", time.time() - start_time)
 
         start_time = time.time()
         gradients_policy, gradients_value = [], []
@@ -166,7 +165,7 @@ def simulate():
 
             previous_summary_time = time.time()
             eprewards=[]
-        # print("Gather batch", time.time() - start_time)
+        print("Gather batch", time.time() - start_time)
 
 
 if __name__ == "__main__":
