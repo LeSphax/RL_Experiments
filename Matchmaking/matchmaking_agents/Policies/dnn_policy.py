@@ -1,5 +1,4 @@
 from Matchmaking.matchmaking_agents.Policies.policy import Policy
-from Matchmaking.matchmaking_agents.models import create_model, create_atari_model
 import tensorflow as tf
 import numpy as np
 
@@ -12,9 +11,9 @@ class CategoricalPd(object):
         return tf.nn.softmax_cross_entropy_with_logits(logits=self.logits, labels=one_hot_actions)
 
     def entropy(self):
-        a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keep_dims=True)
+        a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, axis=-1, keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
 
@@ -32,7 +31,7 @@ class DNNPolicy(Policy):
 
         self.X, previous_layer = model_function(name, self.input_shape, num_layers, reuse)
 
-        with tf.variable_scope(name+'/training', reuse=reuse):
+        with tf.variable_scope(name + '/training', reuse=reuse):
             self.output_layer = tf.contrib.layers.fully_connected(
                 inputs=previous_layer,
                 num_outputs=self.output_size,
@@ -69,7 +68,8 @@ class DNNPolicy(Policy):
 
             self.placeholder_gradients = []
             for grad_var in self.grads_and_vars:
-                self.placeholder_gradients.append((tf.placeholder('float', shape=grad_var[1].get_shape(), name="gradient_placeholder"), grad_var[1]))
+                self.placeholder_gradients.append(
+                    (tf.placeholder('float', shape=grad_var[1].get_shape(), name="gradient_placeholder"), grad_var[1]))
 
             optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
             self._train = optimizer.apply_gradients(self.placeholder_gradients)
@@ -77,7 +77,6 @@ class DNNPolicy(Policy):
             self.sess = tf.get_default_session()
             init = tf.global_variables_initializer()
             self.sess.run(init)
-
 
     def get_action(self, obs):
         action, neglogp_action = self.sess.run([self.action, self.neglogp_action],

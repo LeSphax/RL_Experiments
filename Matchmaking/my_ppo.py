@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-from multiprocessing import Pipe
-
 import gym
 import sys
 import os
+import _thread
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Matchmaking.runner import EnvRunner, EnvRunnerProcess
-from Matchmaking.matchmaking_agents.Policies import scripted_policy, dnn_policy, random_policy, scripted_random_policy, \
-    scripted_policy_live
-from Matchmaking.matchmaking_agents.Values import random_value, dnn_value
-from Matchmaking.wrappers import MonitorEnv, TensorboardMathmakingEnv, TensorboardEnv
-from Matchmaking.renderer import EnvRendererProcess
+from Matchmaking.atari import StateProcessor, create_model, ProcessStateEnv
+from Matchmaking.runner import EnvRunner
+from Matchmaking.matchmaking_agents.Policies import dnn_policy
+from Matchmaking.matchmaking_agents.Values import dnn_value
+from Matchmaking.wrappers import MonitorEnv, TensorboardEnv, AutoResetEnv
 
 import numpy as np
 import utils.keyPoller as kp
@@ -48,7 +47,6 @@ print(parameters)
 
 date = datetime.now().strftime("%m%d-%H%M")
 
-from Matchmaking.matchmaking_agents.models import create_model, create_atari_model
 
 
 # def create_summaries(save_path):
@@ -57,11 +55,6 @@ from Matchmaking.matchmaking_agents.models import create_model, create_atari_mod
 def simulate():
     env_name = 'Breakout-v0'
     save_path = './train/{env_name}/{name}_{date}'.format(env_name=env_name, name=name, date=date)
-
-    results = multiprocessing.Queue()
-    nb_workers = 4
-    new_policy_queues = [None for _ in range(nb_workers)]
-    print(new_policy_queues)
 
     def make_session():
         ncpu = multiprocessing.cpu_count()
@@ -77,95 +70,89 @@ def simulate():
     def make_env():
         env = gym.make(env_name)
 
-        # env.seed(parameters.seed)
+        env.seed(parameters.seed)
         random.seed(parameters.seed)
 
         env = MonitorEnv(env)
-        # env = TensorboardEnv(env, save_path)
+        env = ProcessStateEnv(env)
         return env
 
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(create_atari_model, env, 1)
+        policy = dnn_policy.DNNPolicy(create_model, env, 1)
         # policy_estimator = scripted_policy_live.ScriptedPolicy(env)
-        value = dnn_value.DNNValue(create_atari_model, env, 1)
+        value = dnn_value.DNNValue(create_model, env, 1)
         return policy, value
-
-    for i in range(nb_workers):
-        new_policy_queues[i] = multiprocessing.Queue()
-        runner = EnvRunnerProcess(i, make_session, make_env, make_model, parameters, results, new_policy_queues[i])
-        runner.start()
-
-    renderer_new_policy_queue = multiprocessing.Queue()
-    instruction_pipe, child_pipe = Pipe()
-    renderer = EnvRendererProcess(make_session, make_env, make_model, renderer_new_policy_queue, child_pipe)
-    renderer.start()
 
     make_session()
     env = make_env()
     policy_estimator, value_estimator = make_model(env)
+    saver = tf.train.Saver()
+    env = TensorboardEnv(env, saver, save_path)
 
-    render = False
+    def renderer_thread(make_env, policy_estimator):
+        env = make_env()
+        env = AutoResetEnv(env)
+        obs = env.reset()
+        render = False
 
-    def toggleRendering():
-        print("Toggle rendering")
-        nonlocal render
-        if not render:
-            render = True
-            policy_weights = policy_estimator.get_weights()
-            value_weights = value_estimator.get_weights()
+        def toggle_rendering():
+            print("Toggle rendering")
+            nonlocal render
+            render = not render
 
-            renderer_new_policy_queue.put((policy_weights, value_weights))
-            instruction_pipe.send('start')
-        else:
-            render = False
-            instruction_pipe.send('stop')
+        while True:
+            kp.keyboardCommands("r", toggle_rendering)
+            if render:
+                env.render()
+                action, neglogp_action = policy_estimator.get_action(obs)
 
-    TOTAL_REWARD = tf.placeholder(tf.float32, ())
-    FPS = tf.placeholder(tf.float32, ())
-    tf.summary.scalar('total_reward', TOTAL_REWARD)
-    tf.summary.scalar('fps', FPS)
-    merged = tf.summary.merge_all()
+                obs, reward, done, info = env.step(action)
+
     sess = tf.get_default_session()
-    train_writer = tf.summary.FileWriter(save_path, sess.graph)
 
-    eprewards = []
-    previous_summary_time = time.time()
+    _thread.start_new_thread(renderer_thread, (make_env, policy_estimator))
+
+    runner = EnvRunner(sess, env, policy_estimator, value_estimator)
     for t in range(parameters.total_batches):
-        kp.keyboardCommands("r", toggleRendering)
 
         decay = t / parameters.total_batches
         learning_rate = parameters.learning_rate * (1 - decay)
-        start_time = time.time()
-        policy_weights = policy_estimator.get_weights()
-        value_weights = value_estimator.get_weights()
-
-        for i in range(nb_workers):
-            new_policy_queues[i].put((decay, policy_weights, value_weights))
-        print("Get and write weights", time.time() - start_time)
+        clipping = parameters.clipping * (1 - decay)
 
         start_time = time.time()
-        gradients_policy, gradients_value = [], []
-        for i in range(nb_workers):
-            worker_p_grads, worker_v_grads, epinfos = results.get()
-            eprewards = np.concatenate([eprewards, [epinfo['total_reward'] for epinfo in epinfos]])
-            gradients_policy.append(worker_p_grads)
-            gradients_value.append(worker_v_grads)
+        training_batch, epinfos = runner.run_timesteps(parameters.batch_size)
+        print("Run batch", time.time() - start_time)
 
-        policy_estimator.apply_gradients(np.mean(gradients_policy, axis=0), learning_rate * parameters.nb_minibatch * parameters.nb_epochs)
-        value_estimator.apply_gradients(np.mean(gradients_value, axis=0), learning_rate * parameters.nb_minibatch * parameters.nb_epochs)
+        start_time = time.time()
+        inds = np.arange(parameters.batch_size)
+        for _ in range(parameters.nb_epochs):
 
-        if t % 10 == 0 and t > 0:
-            print(t, "Run summary", np.mean(eprewards), 10 * parameters.batch_size, t * parameters.batch_size)
+            np.random.shuffle(inds)
+            minibatch_size = parameters.batch_size // parameters.nb_minibatch
+            for start in range(0, parameters.batch_size, minibatch_size):
+                end = start + minibatch_size
+                mb_inds = inds[start:end]
 
-            summary = sess.run(merged, {
-                TOTAL_REWARD: np.mean(eprewards),
-                FPS: 10 * parameters.batch_size / (time.time() - previous_summary_time)
-            })
-            train_writer.add_summary(summary, t * parameters.batch_size)
+                entropy, policy_loss, policy_gradient_step = policy_estimator.get_gradients(
+                    obs=training_batch['obs'][mb_inds],
+                    actions=training_batch['actions'][mb_inds],
+                    neglogp_actions=training_batch['neglogp_actions'][mb_inds],
+                    advantages=training_batch['advantages'][mb_inds],
+                    clipping=clipping,
+                    learning_rate=learning_rate,
+                )
+                policy_estimator.apply_gradients(policy_gradient_step, learning_rate)
 
-            previous_summary_time = time.time()
-            eprewards=[]
-        print("Gather batch", time.time() - start_time)
+                value_loss, value_gradient_step = value_estimator.get_gradients(
+                    obs=training_batch['obs'][mb_inds],
+                    values=training_batch['values'][mb_inds],
+                    returns=training_batch['returns'][mb_inds],
+                    clipping=clipping,
+                    learning_rate=learning_rate,
+                )
+                value_estimator.apply_gradients(value_gradient_step, learning_rate)
+
+        print("Train model", time.time() - start_time)
 
 
 if __name__ == "__main__":
