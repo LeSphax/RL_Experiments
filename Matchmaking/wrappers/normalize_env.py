@@ -2,15 +2,26 @@ import gym
 from gym.core import Wrapper
 import numpy as np
 
+global_instance = None
+
+
 class NormalizeEnv(Wrapper):
 
-    def __init__(self, env, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8):
+    def __init__(self, env, ob=True, ret=True, *, reuse=False, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8):
         Wrapper.__init__(self, env=env)
-        self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
-        self.ret_rms = RunningMeanStd(shape=()) if ret else None
+        global global_instance
+        if reuse:  # We need the same normalization everywhere to use the same model on different environments
+            self.ob_rms = global_instance.ob_rms
+            self.ret_rms = global_instance.ret_rms
+            self.ret = global_instance.ret
+        else:
+            self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+            self.ret_rms = RunningMeanStd(shape=()) if ret else None
+            self.ret = np.zeros(1)
+            global_instance = self
+
         self.clipob = clipob
         self.cliprew = cliprew
-        self.ret = np.zeros(1)
         self.gamma = gamma
         self.epsilon = epsilon
 
@@ -35,6 +46,7 @@ class NormalizeEnv(Wrapper):
         obs = self.env.reset()
         return self._obfilt(obs)
 
+
 class RunningMeanStd(object):
     # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
     def __init__(self, epsilon=1e-4, shape=()):
@@ -47,7 +59,7 @@ class RunningMeanStd(object):
         delta = values - self.mean
         tot_count = self.count + 1
 
-        new_mean = self.mean + delta / tot_count        
+        new_mean = self.mean + delta / tot_count
         m_a = self.var * (self.count)
         M2 = m_a + np.square(delta) * self.count / (tot_count)
         new_var = M2 / (tot_count)
@@ -56,4 +68,4 @@ class RunningMeanStd(object):
 
         self.mean = new_mean
         self.var = new_var
-        self.count = new_count    
+        self.count = new_count

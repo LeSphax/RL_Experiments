@@ -63,16 +63,9 @@ class DNNPolicy(Policy):
             grads = tf.gradients(self.loss, self.params)
             grads, _grad_norm = tf.clip_by_global_norm(grads, 0.5)
             self.grads_and_vars = list(zip(grads, self.params))
-            self.grads_and_vars = [(grad, var) for (grad, var) in self.grads_and_vars if grad is not None]
-            self.gradients = [grad for (grad, var) in self.grads_and_vars]
-
-            self.placeholder_gradients = []
-            for grad_var in self.grads_and_vars:
-                self.placeholder_gradients.append(
-                    (tf.placeholder('float', shape=grad_var[1].get_shape(), name="gradient_placeholder"), grad_var[1]))
 
             optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
-            self._train = optimizer.apply_gradients(self.placeholder_gradients)
+            self._train = optimizer.apply_gradients(self.grads_and_vars)
 
             self.sess = tf.get_default_session()
             init = tf.global_variables_initializer()
@@ -84,10 +77,10 @@ class DNNPolicy(Policy):
 
         return action[0], neglogp_action[0]
 
-    def get_gradients(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
+    def train(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        entropy, loss, gradients = self.sess.run(
-            [self.entropy, self.loss, self.gradients],
+        entropy, loss, _ = self.sess.run(
+            [self.entropy, self.loss, self._train],
             {
                 self.X: obs,
                 self.ACTIONS: actions,
@@ -97,15 +90,7 @@ class DNNPolicy(Policy):
                 self.LEARNING_RATE: learning_rate,
             }
         )
-        return entropy, loss, gradients
-
-    def apply_gradients(self, gradients, learning_rate):
-        feed_dict = {
-            self.LEARNING_RATE: learning_rate,
-        }
-        for i, _ in enumerate(self.grads_and_vars):
-            feed_dict[self.placeholder_gradients[i][0]] = gradients[i]
-        self._train.run(feed_dict=feed_dict)
+        return entropy, loss
 
     def get_weights(self):
         values = tf.get_default_session().run(tf.global_variables())

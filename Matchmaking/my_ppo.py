@@ -6,11 +6,12 @@ import _thread
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Matchmaking.atari import StateProcessor, create_model, ProcessStateEnv
+# from Matchmaking.atari import StateProcessor, create_model, ProcessStateEnv
 from Matchmaking.runner import EnvRunner
 from Matchmaking.matchmaking_agents.Policies import dnn_policy
 from Matchmaking.matchmaking_agents.Values import dnn_value
-from Matchmaking.wrappers import MonitorEnv, TensorboardEnv, AutoResetEnv
+from Matchmaking.wrappers import MonitorEnv, TensorboardEnv, AutoResetEnv, NormalizeEnv
+from Matchmaking.matchmaking_agents.models import create_model
 
 import numpy as np
 import utils.keyPoller as kp
@@ -37,8 +38,8 @@ parameters_dict = {
     "nb_epochs": 4,
     "nb_minibatch": 4,
     "clipping": 0.1,
-    "learning_rate": 0.000025,
-    "total_timesteps": 1000000,
+    "learning_rate": 0.00025,
+    "total_timesteps": 100000,
 }
 parameters = SimpleNamespace(**parameters_dict)
 parameters.total_batches = parameters.total_timesteps // parameters.batch_size
@@ -47,11 +48,8 @@ print(parameters)
 date = datetime.now().strftime("%m%d-%H%M")
 
 
-# def create_summaries(save_path):
-
-
 def simulate():
-    env_name = 'Breakout-v0'
+    env_name = 'CartPole-v1'
     save_path = './train/{env_name}/{name}_{date}'.format(env_name=env_name, name=name, date=date)
 
     def make_session():
@@ -72,13 +70,12 @@ def simulate():
         random.seed(parameters.seed)
 
         env = MonitorEnv(env)
-        env = ProcessStateEnv(env)
+        # env = ProcessStateEnv(env)
         return env
 
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(create_model, env, 1)
-        # policy_estimator = scripted_policy_live.ScriptedPolicy(env)
-        value = dnn_value.DNNValue(create_model, env, 1)
+        policy = dnn_policy.DNNPolicy(create_model, env, 2)
+        value = dnn_value.DNNValue(create_model, env, 2)
         return policy, value
 
     make_session()
@@ -92,7 +89,9 @@ def simulate():
     def renderer_thread(make_env, policy_estimator, sess):
         with sess.as_default(), sess.graph.as_default():
             env = make_env()
-            env = AutoResetEnv(env)
+            env = AutoResetEnv(env, 500)
+            if policy_estimator.normalize():
+                env = NormalizeEnv(env, reuse=True)
             obs = env.reset()
             render = False
 
@@ -107,7 +106,8 @@ def simulate():
                     env.render()
                     action, neglogp_action = policy_estimator.get_action(obs)
 
-                    obs, reward, done, info = env.step(action)
+                else:
+                    time.sleep(1)
 
     _thread.start_new_thread(renderer_thread, (make_env, policy_estimator, sess))
 
@@ -120,9 +120,15 @@ def simulate():
 
         start_time = time.time()
         training_batch, epinfos = runner.run_timesteps(parameters.batch_size)
-        print("Run batch", time.time() - start_time)
+        # print("Run batch", time.time() - start_time)
 
         start_time = time.time()
+
+        # print(clipping)
+        # print(learning_rate)
+        # print({k: np.mean(training_batch[k]) for k in training_batch})
+        # print({k: np.std(training_batch[k]) for k in training_batch})
+
         inds = np.arange(parameters.batch_size)
         for _ in range(parameters.nb_epochs):
 
@@ -132,7 +138,7 @@ def simulate():
                 end = start + minibatch_size
                 mb_inds = inds[start:end]
 
-                entropy, policy_loss, policy_gradient_step = policy_estimator.get_gradients(
+                entropy, policy_loss = policy_estimator.train(
                     obs=training_batch['obs'][mb_inds],
                     actions=training_batch['actions'][mb_inds],
                     neglogp_actions=training_batch['neglogp_actions'][mb_inds],
@@ -140,18 +146,16 @@ def simulate():
                     clipping=clipping,
                     learning_rate=learning_rate,
                 )
-                policy_estimator.apply_gradients(policy_gradient_step, learning_rate)
 
-                value_loss, value_gradient_step = value_estimator.get_gradients(
+                value_loss = value_estimator.train(
                     obs=training_batch['obs'][mb_inds],
                     values=training_batch['values'][mb_inds],
                     returns=training_batch['returns'][mb_inds],
                     clipping=clipping,
                     learning_rate=learning_rate,
                 )
-                value_estimator.apply_gradients(value_gradient_step, learning_rate)
 
-        print("Train model", time.time() - start_time)
+        # print("Train model", time.time() - start_time)
 
 
 if __name__ == "__main__":

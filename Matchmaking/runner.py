@@ -29,9 +29,6 @@ class EnvRunner(object):
         epinfos = []
 
         for t in range(nb_timesteps):
-            # kp.checkKeyStrokes(None, None)
-            # if kp.render:
-            #     self.env.render()
 
             batch['obs'].append(self.obs)
             value = self.value_estimator.get_value(self.obs)

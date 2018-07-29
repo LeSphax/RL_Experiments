@@ -5,7 +5,7 @@ from gym.core import Wrapper
 
 
 class TensorboardEnv(Wrapper):
-    def __init__(self, env, saver, save_path, summary_interval = 1028):
+    def __init__(self, env, saver, save_path, summary_interval=1028):
         Wrapper.__init__(self, env=env)
         self.episode_rewards = []
         self.total_nb_steps = 0
@@ -36,7 +36,8 @@ class TensorboardEnv(Wrapper):
             if self.total_nb_steps % (self.summary_interval * 50) == 0:
                 self.saver.save(self.sess, self.save_path + "/latest_save")
 
-            print("Create dem summaries")
+            print("Create dem summaries", np.mean(self.episode_rewards),
+                  self.summary_interval / (time.time() - self.previous_summary_time))
             summary = self.sess.run(self.merged, {
                 self.TOTAL_REWARD: np.mean(self.episode_rewards),
                 self.FPS: self.summary_interval / (time.time() - self.previous_summary_time)
