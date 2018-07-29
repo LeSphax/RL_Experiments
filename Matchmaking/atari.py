@@ -3,14 +3,13 @@ import numpy as np
 from gym import Wrapper, spaces
 
 
-#Take the 210x160 RGB frames from the atari env and turn then into stacks of 4 frames with 84x84 grayscale
+# Take the 210x160 RGB frames from the atari env and turn then into stacks of 4 frames with 84x84 grayscale
 class ProcessStateEnv(Wrapper):
     def __init__(self, env):
         Wrapper.__init__(self, env=env)
         self.sp = StateProcessor()
         self.observation_space = spaces.Box(low=0, high=255, shape=(84, 84, 4), dtype=np.uint8)
         self.state = None
-
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action)
@@ -28,9 +27,10 @@ class StateProcessor():
     """
     Processes a raw Atari image. Resizes it and converts it to grayscale.
     """
+
     def __init__(self):
         # Build the Tensorflow graph
-        with tf.variable_scope("state_processor"):
+        with tf.variable_scope("state_processor", reuse=True):
             self.input_state = tf.placeholder(shape=[210, 160, 3], dtype=tf.uint8)
             self.output = tf.image.rgb_to_grayscale(self.input_state)
             self.output = tf.image.crop_to_bounding_box(self.output, 34, 0, 160, 160)
@@ -38,7 +38,7 @@ class StateProcessor():
                 self.output, [84, 84], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
             self.output = tf.squeeze(self.output)
 
-    def process(self, state, sess=None):
+    def process(self, state):
         """
         Args:
             sess: A Tensorflow session object
@@ -47,8 +47,8 @@ class StateProcessor():
         Returns:
             A processed [84, 84, 1] state representing grayscale values.
         """
-        sess = sess or tf.get_default_session()
-        return sess.run(self.output, { self.input_state: state })
+        sess = tf.get_default_session()
+        return sess.run(self.output, {self.input_state: state})
 
 
 def create_model(name, input_shape, num_layers, reuse=False):

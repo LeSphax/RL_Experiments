@@ -26,7 +26,7 @@ class TensorboardEnv(Wrapper):
         tf.summary.scalar('fps', self.FPS)
         self.merged = tf.summary.merge_all()
         self.sess = tf.get_default_session()
-        self.train_writer = tf.summary.FileWriter(save_path, self.sess.graph)
+        self.train_writer = tf.summary.FileWriter(save_path)
 
     def step(self, action):
         obs, rew, done, info = self.env.step(action)

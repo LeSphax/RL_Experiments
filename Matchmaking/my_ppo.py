@@ -4,7 +4,6 @@ import sys
 import os
 import _thread
 
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Matchmaking.atari import StateProcessor, create_model, ProcessStateEnv
@@ -48,7 +47,6 @@ print(parameters)
 date = datetime.now().strftime("%m%d-%H%M")
 
 
-
 # def create_summaries(save_path):
 
 
@@ -84,33 +82,34 @@ def simulate():
         return policy, value
 
     make_session()
+    sess = tf.get_default_session()
+
     env = make_env()
     policy_estimator, value_estimator = make_model(env)
     saver = tf.train.Saver()
     env = TensorboardEnv(env, saver, save_path)
 
-    def renderer_thread(make_env, policy_estimator):
-        env = make_env()
-        env = AutoResetEnv(env)
-        obs = env.reset()
-        render = False
+    def renderer_thread(make_env, policy_estimator, sess):
+        with sess.as_default(), sess.graph.as_default():
+            env = make_env()
+            env = AutoResetEnv(env)
+            obs = env.reset()
+            render = False
 
-        def toggle_rendering():
-            print("Toggle rendering")
-            nonlocal render
-            render = not render
+            def toggle_rendering():
+                print("Toggle rendering")
+                nonlocal render
+                render = not render
 
-        while True:
-            kp.keyboardCommands("r", toggle_rendering)
-            if render:
-                env.render()
-                action, neglogp_action = policy_estimator.get_action(obs)
+            while True:
+                kp.keyboardCommands("r", toggle_rendering)
+                if render:
+                    env.render()
+                    action, neglogp_action = policy_estimator.get_action(obs)
 
-                obs, reward, done, info = env.step(action)
+                    obs, reward, done, info = env.step(action)
 
-    sess = tf.get_default_session()
-
-    _thread.start_new_thread(renderer_thread, (make_env, policy_estimator))
+    _thread.start_new_thread(renderer_thread, (make_env, policy_estimator, sess))
 
     runner = EnvRunner(sess, env, policy_estimator, value_estimator)
     for t in range(parameters.total_batches):

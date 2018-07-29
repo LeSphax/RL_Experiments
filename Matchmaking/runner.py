@@ -1,10 +1,7 @@
-from multiprocessing import Process
-
-from Matchmaking.wrappers import AutoResetEnv, NormalizeEnv, TensorboardEnv
 import numpy as np
-import utils.keyPoller as kp
-import time
-from datetime import datetime
+
+from Matchmaking.wrappers import AutoResetEnv, NormalizeEnv
+
 
 class EnvRunner(object):
     def __init__(self, session, env, policy_estimator, value_estimator, discount_factor=0.9999, gae_weighting=0.95):
@@ -67,7 +64,8 @@ class EnvRunner(object):
                 use_last_discounted_adv = 1
 
             td_error = self.discount_factor * next_value + batch['rewards'][idx] - batch['values'][idx]
-            advantages[idx] = last_discounted_adv = td_error + self.discount_factor * self.gae_weighting * last_discounted_adv * use_last_discounted_adv
+            advantages[idx] = last_discounted_adv = td_error \
+                                                    + self.discount_factor * self.gae_weighting * last_discounted_adv * use_last_discounted_adv
         returns = advantages + batch['values'][:-1]
 
         batch['advantages'] = advantages
