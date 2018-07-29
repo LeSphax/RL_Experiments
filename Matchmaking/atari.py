@@ -92,7 +92,7 @@ def create_model(name, input_shape, num_layers, reuse=False):
         for idx in range(num_layers):
             hidden_layer = tf.contrib.layers.fully_connected(
                 inputs=previous_layer,
-                num_outputs=256,
+                num_outputs=512,
                 activation_fn=activ,
                 weights_initializer=tf.orthogonal_initializer(np.sqrt(2))
             )

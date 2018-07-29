@@ -5,12 +5,11 @@ from gym.core import Wrapper
 
 
 class TensorboardEnv(Wrapper):
-    def __init__(self, env, saver, save_path, summary_interval=1028):
+    def __init__(self, env, save_path, summary_interval=1028):
         Wrapper.__init__(self, env=env)
         self.episode_rewards = []
         self.total_nb_steps = 0
         self.rewards = None
-        self.saver = saver
         self.save_path = save_path
 
         self.summary_interval = summary_interval
@@ -33,8 +32,6 @@ class TensorboardEnv(Wrapper):
         self.rewards.append(rew)
         self.total_nb_steps += 1
         if self.total_nb_steps % self.summary_interval == 0:
-            if self.total_nb_steps % (self.summary_interval * 50) == 0:
-                self.saver.save(self.sess, self.save_path + "/latest_save")
 
             print("Create dem summaries", np.mean(self.episode_rewards),
                   self.summary_interval / (time.time() - self.previous_summary_time))

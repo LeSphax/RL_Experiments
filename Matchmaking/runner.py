@@ -1,16 +1,12 @@
 import numpy as np
 
-from Matchmaking.wrappers import AutoResetEnv, NormalizeEnv
-
 
 class EnvRunner(object):
     def __init__(self, session, env, policy_estimator, value_estimator, discount_factor=0.9999, gae_weighting=0.95):
         self.sess = session
         self.policy_estimator = policy_estimator
         self.value_estimator = value_estimator
-        self.env = AutoResetEnv(env, 500)
-        if self.policy_estimator.normalize():
-            self.env = NormalizeEnv(self.env)
+        self.env = env
         self.obs = self.env.reset()
         self.discount_factor = discount_factor
         self.gae_weighting = gae_weighting

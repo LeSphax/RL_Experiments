@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-import gym
-import sys
-import os
 import _thread
+import os
+import sys
+
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -10,13 +10,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Matchmaking.runner import EnvRunner
 from Matchmaking.matchmaking_agents.Policies import dnn_policy
 from Matchmaking.matchmaking_agents.Values import dnn_value
-from Matchmaking.wrappers import MonitorEnv, TensorboardEnv, AutoResetEnv, NormalizeEnv
-from Matchmaking.matchmaking_agents.models import create_model
+from Matchmaking.cartpole_config import CartPoleConfig
 
 import numpy as np
 import utils.keyPoller as kp
 from datetime import datetime
-import random
 import time
 import multiprocessing
 from docopt import docopt
@@ -32,25 +30,14 @@ options = docopt(_USAGE)
 
 name = str(options['<name>'])
 
-parameters_dict = {
-    "seed": 1,
-    "batch_size": 128,
-    "nb_epochs": 4,
-    "nb_minibatch": 4,
-    "clipping": 0.1,
-    "learning_rate": 0.00025,
-    "total_timesteps": 100000,
-}
-parameters = SimpleNamespace(**parameters_dict)
-parameters.total_batches = parameters.total_timesteps // parameters.batch_size
-print(parameters)
 
 date = datetime.now().strftime("%m%d-%H%M")
 
 
 def simulate():
-    env_name = 'CartPole-v1'
-    save_path = './train/{env_name}/{name}_{date}'.format(env_name=env_name, name=name, date=date)
+    config = CartPoleConfig()
+    parameters = config.parameters
+    save_path = './train/{env_name}/{name}_{date}'.format(env_name=config.env_name, name=name, date=date)
 
     def make_session():
         ncpu = multiprocessing.cpu_count()
@@ -63,35 +50,20 @@ def simulate():
         sess = tf.Session(config=config)
         sess.__enter__()
 
-    def make_env():
-        env = gym.make(env_name)
-
-        env.seed(parameters.seed)
-        random.seed(parameters.seed)
-
-        env = MonitorEnv(env)
-        # env = ProcessStateEnv(env)
-        return env
-
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(create_model, env, 2)
-        value = dnn_value.DNNValue(create_model, env, 2)
+        policy = dnn_policy.DNNPolicy(config.create_model, env)
+        value = dnn_value.DNNValue(config.create_model, env)
         return policy, value
 
     make_session()
     sess = tf.get_default_session()
 
-    env = make_env()
+    env = config.make_env(save_path)
     policy_estimator, value_estimator = make_model(env)
-    saver = tf.train.Saver()
-    env = TensorboardEnv(env, saver, save_path)
 
-    def renderer_thread(make_env, policy_estimator, sess):
+    def renderer_thread(policy_estimator, sess):
         with sess.as_default(), sess.graph.as_default():
-            env = make_env()
-            env = AutoResetEnv(env, 500)
-            if policy_estimator.normalize():
-                env = NormalizeEnv(env, reuse=True)
+            env = config.make_env(reuse_wrappers=True)
             obs = env.reset()
             render = False
 
@@ -106,15 +78,16 @@ def simulate():
                     env.render()
                     action, neglogp_action = policy_estimator.get_action(obs)
 
+                    obs, reward, done, info = env.step(action)
                 else:
                     time.sleep(1)
 
-    _thread.start_new_thread(renderer_thread, (make_env, policy_estimator, sess))
+    _thread.start_new_thread(renderer_thread, (policy_estimator, sess))
 
     runner = EnvRunner(sess, env, policy_estimator, value_estimator)
     for t in range(parameters.total_batches):
 
-        decay = t / parameters.total_batches
+        decay = t / parameters.total_batches if parameters.decay else 0
         learning_rate = parameters.learning_rate * (1 - decay)
         clipping = parameters.clipping * (1 - decay)
 
