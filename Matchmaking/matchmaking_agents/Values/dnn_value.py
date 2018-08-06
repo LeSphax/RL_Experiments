@@ -16,7 +16,7 @@ class DNNValue(MatchmakingValue):
                 inputs=previous_layer,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.constant_initializer(1)
+                weights_initializer=tf.orthogonal_initializer(1)
             )[:, 0]
 
             self.OLD_VALUES = tf.placeholder(tf.float32, [None], name="old_values")
@@ -42,7 +42,7 @@ class DNNValue(MatchmakingValue):
             self.sess.run(init)
 
     def get_value(self, obs):
-        return self.sess.run(self.value, {self.X: np.reshape(obs, (1,) + self.input_shape)})
+        return self.sess.run(self.value, {self.X: obs})
 
     def train(self, obs, values, returns, clipping, learning_rate):
         values, loss, _ = self.sess.run(

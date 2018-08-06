@@ -5,12 +5,13 @@ import sys
 
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from Matchmaking.wrappers.sample_runner import SampleRunner
 
-# from Matchmaking.atari import StateProcessor, create_model, ProcessStateEnv
+from Matchmaking.cartpole_config import CartPoleConfig
 from Matchmaking.runner import EnvRunner
 from Matchmaking.matchmaking_agents.Policies import dnn_policy
 from Matchmaking.matchmaking_agents.Values import dnn_value
-from Matchmaking.cartpole_config import CartPoleConfig
+from Matchmaking.atari_config import AtariConfig
 
 import numpy as np
 import utils.keyPoller as kp
@@ -18,18 +19,19 @@ from datetime import datetime
 import time
 import multiprocessing
 from docopt import docopt
-from types import SimpleNamespace
 import tensorflow as tf
 
 _USAGE = '''
 Usage:
-    my_ppo (<name>)
+    my_ppo (<name>) [--debug]
+    
+Options:
+    --debug                        Tensorflow debugger
 
 '''
 options = docopt(_USAGE)
 
 name = str(options['<name>'])
-
 
 date = datetime.now().strftime("%m%d-%H%M")
 
@@ -46,7 +48,7 @@ def simulate():
         config = tf.ConfigProto(allow_soft_placement=True,
                                 intra_op_parallelism_threads=ncpu,
                                 inter_op_parallelism_threads=ncpu)
-        config.gpu_options.allow_growth = True  # pylint: disable=E1101
+        config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
         sess.__enter__()
 
@@ -58,14 +60,15 @@ def simulate():
     make_session()
     sess = tf.get_default_session()
 
-    env = config.make_env(save_path)
-    policy_estimator, value_estimator = make_model(env)
+    venv = config.make_vec_env(save_path)
+    policy_estimator, value_estimator = make_model(venv)
+    saver = tf.train.Saver()
 
     def renderer_thread(policy_estimator, sess):
         with sess.as_default(), sess.graph.as_default():
-            env = config.make_env(reuse_wrappers=True)
+            env = config.make_vec_env(renderer=True)
             obs = env.reset()
-            render = False
+            render = True
 
             def toggle_rendering():
                 print("Toggle rendering")
@@ -79,28 +82,21 @@ def simulate():
                     action, neglogp_action = policy_estimator.get_action(obs)
 
                     obs, reward, done, info = env.step(action)
+                    time.sleep(0.02)
                 else:
                     time.sleep(1)
 
     _thread.start_new_thread(renderer_thread, (policy_estimator, sess))
 
-    runner = EnvRunner(sess, env, policy_estimator, value_estimator)
+    runner = EnvRunner(sess, venv, policy_estimator, value_estimator)
+    runner = SampleRunner(runner)
     for t in range(parameters.total_batches):
 
         decay = t / parameters.total_batches if parameters.decay else 0
         learning_rate = parameters.learning_rate * (1 - decay)
         clipping = parameters.clipping * (1 - decay)
 
-        start_time = time.time()
         training_batch, epinfos = runner.run_timesteps(parameters.batch_size)
-        # print("Run batch", time.time() - start_time)
-
-        start_time = time.time()
-
-        # print(clipping)
-        # print(learning_rate)
-        # print({k: np.mean(training_batch[k]) for k in training_batch})
-        # print({k: np.std(training_batch[k]) for k in training_batch})
 
         inds = np.arange(parameters.batch_size)
         for _ in range(parameters.nb_epochs):
@@ -128,7 +124,9 @@ def simulate():
                     learning_rate=learning_rate,
                 )
 
-        # print("Train model", time.time() - start_time)
+        if t % (10000) == 0:
+            print("Saved model", t)
+            saver.save(sess, save_path + "/latest_save")
 
 
 if __name__ == "__main__":

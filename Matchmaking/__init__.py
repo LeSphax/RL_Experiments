@@ -14,7 +14,7 @@ class EnvConfiguration(ABC):
     @property
     def parameters(self):
         parameters = SimpleNamespace(**self._parameters())
-        parameters.total_batches = parameters.total_timesteps // parameters.batch_size
+        parameters.total_batches = parameters.total_timesteps // parameters.batch_size // parameters.num_env
         return parameters
 
     @abstractmethod
@@ -28,5 +28,25 @@ class EnvConfiguration(ABC):
     def env_name(self):
         """
         The name of the gym environment (i.e CartPole-v1)
+        """
+        pass
+
+    @abstractmethod
+    def make_env(self, save_path, renderer=False):
+        """
+        Returns the environment
+        """
+        pass
+
+    def make_env_fn(self, proc_idx=0):
+        def _thunk():
+            return self.make_env(proc_idx)
+
+        return _thunk
+
+    @abstractmethod
+    def make_vec_env(self, save_path):
+        """
+        Returns the environment
         """
         pass

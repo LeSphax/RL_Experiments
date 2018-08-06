@@ -67,15 +67,18 @@ class DNNPolicy(Policy):
             optimizer = tf.train.AdamOptimizer(learning_rate=self.LEARNING_RATE, epsilon=1e-5)
             self._train = optimizer.apply_gradients(self.grads_and_vars)
 
+            from tensorflow.python import debug as tf_debug
+
             self.sess = tf.get_default_session()
+            # self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
             init = tf.global_variables_initializer()
             self.sess.run(init)
 
     def get_action(self, obs):
         action, neglogp_action = self.sess.run([self.action, self.neglogp_action],
-                                               {self.X: np.reshape(obs, (1,) + self.input_shape)})
+                                               {self.X: obs})
 
-        return action[0], neglogp_action[0]
+        return action, neglogp_action
 
     def train(self, obs, actions, neglogp_actions, advantages, clipping, learning_rate):
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
