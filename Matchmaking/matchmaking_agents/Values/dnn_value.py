@@ -5,11 +5,11 @@ import numpy as np
 
 class DNNValue(MatchmakingValue):
 
-    def __init__(self, model_function, env, reuse=False):
+    def __init__(self, model_function, env, *, reuse_model=False, reuse=False):
         self.input_shape = env.observation_space.shape
         name = 'value'
 
-        self.X, previous_layer = model_function(name, self.input_shape, reuse)
+        self.X, previous_layer = model_function('shared_model', self.input_shape, reuse=reuse_model or reuse)
 
         with tf.variable_scope(name + '/training', reuse=reuse):
             self.value = tf.contrib.layers.fully_connected(

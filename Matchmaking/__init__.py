@@ -32,15 +32,15 @@ class EnvConfiguration(ABC):
         pass
 
     @abstractmethod
-    def make_env(self, save_path, renderer=False):
+    def make_env(self, proc_idx, save_path, renderer=False):
         """
         Returns the environment
         """
         pass
 
-    def make_env_fn(self, proc_idx=0):
+    def make_env_fn(self, proc_idx=0, save_path=None):
         def _thunk():
-            return self.make_env(proc_idx)
+            return self.make_env(proc_idx, save_path)
 
         return _thunk
 

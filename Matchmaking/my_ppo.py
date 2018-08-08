@@ -6,6 +6,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from Matchmaking.wrappers.sample_runner import SampleRunner
+from Matchmaking.breakout_no_frameskip_config import BreakoutNoFrameskipConfig
 
 from Matchmaking.cartpole_config import CartPoleConfig
 from Matchmaking.runner import EnvRunner
@@ -37,7 +38,7 @@ date = datetime.now().strftime("%m%d-%H%M")
 
 
 def simulate():
-    config = CartPoleConfig()
+    config = BreakoutNoFrameskipConfig()
     parameters = config.parameters
     save_path = './train/{env_name}/{name}_{date}'.format(env_name=config.env_name, name=name, date=date)
 
@@ -53,8 +54,8 @@ def simulate():
         sess.__enter__()
 
     def make_model(env):
-        policy = dnn_policy.DNNPolicy(config.create_model, env)
-        value = dnn_value.DNNValue(config.create_model, env)
+        policy = dnn_policy.DNNPolicy(config.create_model, env, reuse_model=False)
+        value = dnn_value.DNNValue(config.create_model, env, reuse_model=True)
         return policy, value
 
     make_session()
@@ -68,7 +69,7 @@ def simulate():
         with sess.as_default(), sess.graph.as_default():
             env = config.make_vec_env(renderer=True)
             obs = env.reset()
-            render = True
+            render = False
 
             def toggle_rendering():
                 print("Toggle rendering")
@@ -89,7 +90,7 @@ def simulate():
     _thread.start_new_thread(renderer_thread, (policy_estimator, sess))
 
     runner = EnvRunner(sess, venv, policy_estimator, value_estimator)
-    runner = SampleRunner(runner)
+    # runner = SampleRunner(runner)
     for t in range(parameters.total_batches):
 
         decay = t / parameters.total_batches if parameters.decay else 0
@@ -124,7 +125,7 @@ def simulate():
                     learning_rate=learning_rate,
                 )
 
-        if t % (10000) == 0:
+        if t % (1000) == 0:
             print("Saved model", t)
             saver.save(sess, save_path + "/latest_save")
 

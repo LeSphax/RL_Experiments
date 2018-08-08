@@ -1,3 +1,4 @@
+import random
 from collections import deque
 
 import cv2
@@ -221,8 +222,36 @@ class NoopResetEnv(gym.Wrapper):
     def step(self, ac):
         return self.env.step(ac)
 
+class MaxAndSkipEnv(gym.Wrapper):
+    def __init__(self, env, skip=4):
+        """Return only every `skip`-th frame"""
+        gym.Wrapper.__init__(self, env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = np.zeros((2,)+env.observation_space.shape, dtype=np.uint8)
+        self._skip       = skip
 
-class AtariConfig(EnvConfiguration):
+    def step(self, action):
+        """Repeat action, sum reward, and max over last observations."""
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            if i == self._skip - 2: self._obs_buffer[0] = obs
+            if i == self._skip - 1: self._obs_buffer[1] = obs
+            total_reward += reward
+            if done:
+                break
+        # Note that the observation on the done=True frame
+        # doesn't matter
+        max_frame = self._obs_buffer.max(axis=0)
+
+        return max_frame, total_reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
+
+
+class BreakoutNoFrameskipConfig(EnvConfiguration):
 
     def create_model(self, name, input_shape, reuse=False):
         with tf.variable_scope(name, reuse=reuse):
@@ -290,13 +319,14 @@ class AtariConfig(EnvConfiguration):
 
     @property
     def env_name(self):
-        return "Breakout-v0"
+        return "BreakoutNoFrameskip-v4"
 
     def make_env(self, proc_idx=0, save_path=None, renderer=False):
         env = gym.make(self.env_name)
 
         env.seed(self.parameters.seed + proc_idx)
         env = NoopResetEnv(env, noop_max=30)
+        env = MaxAndSkipEnv(env, skip=4)
         env = MonitorEnv(env)
         env = EpisodicLifeEnv(env)
         env = FireResetEnv(env)
@@ -304,8 +334,6 @@ class AtariConfig(EnvConfiguration):
         env = ClipRewardEnv(env)
         if save_path:
             env = Monitor(env, directory=save_path and str(proc_idx), video_callable=lambda x: True, resume=True)
-        # env = ProcessStateEnv(env, 4)
-        # env = FrameStack(env, 4)
 
         return env
 
